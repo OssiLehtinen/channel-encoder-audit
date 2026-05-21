@@ -51,13 +51,17 @@ class SumOrthoEncoding(nn.Module):
 
     def __init__(self, n_channels: int, d_model: int, max_len: int = 4096,
                  ortho_lambda: float = 1e-2, learned_pos: bool = False,
-                 project_pos: bool = False):
+                 project_pos: bool = False, use_bias: bool = True):
         super().__init__()
         self.C = n_channels
         self.d_model = d_model
         self.W = nn.Parameter(torch.empty(n_channels, d_model))
         nn.init.normal_(self.W, std=1.0 / math.sqrt(d_model))
-        self.channel_bias = nn.Parameter(torch.zeros(n_channels, d_model))
+        if use_bias:
+            self.channel_bias = nn.Parameter(torch.zeros(n_channels, d_model))
+        else:
+            self.register_buffer("channel_bias",
+                                 torch.zeros(n_channels, d_model))
         if learned_pos:
             self.pos = nn.Embedding(max_len, d_model)
             self._learned_pos = True

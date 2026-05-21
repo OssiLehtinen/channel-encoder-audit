@@ -121,6 +121,11 @@ def build_model(kind: str, n_channels: int, d_model: int, n_bins: int, **kw):
         enc = SumOrthoEncoding(n_channels=n_channels, d_model=d_model,
                                ortho_lambda=0.0)
         return SignalTransformer(enc, d_model=d_model, n_bins=n_bins, **kw)
+    if kind == "linear-nobias":
+        kw.pop("ortho_lambda", None)
+        enc = SumOrthoEncoding(n_channels=n_channels, d_model=d_model,
+                               ortho_lambda=0.0, use_bias=False)
+        return SignalTransformer(enc, d_model=d_model, n_bins=n_bins, **kw)
     if kind == "linear-lpe":
         kw.pop("ortho_lambda", None)
         max_len = kw.get("max_len", 512)

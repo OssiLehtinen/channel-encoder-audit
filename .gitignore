@@ -27,3 +27,6 @@ paper/*.synctex.gz
 .claude/
 claude_resume
 cres_txt.txt
+
+# stray latex artefacts from running pdflatex outside paper/
+texput.log

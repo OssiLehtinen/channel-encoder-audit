@@ -61,7 +61,7 @@ ENCODERS_PROBE = ["sum", "linear", "sum-ortho", "mlp", "linear-ppe", "concat"]
 ENCODERS_DMODEL = ["sum", "concat"]
 
 ALL_STAGES = ["main", "dmodel", "geometry", "probe", "mask", "etth1",
-              "convergence"]
+              "convergence", "bias"]
 
 
 def header(s: str) -> None:
@@ -329,7 +329,41 @@ def stage_etth1(args, device) -> list:
 
 
 # ---------------------------------------------------------------------------
-# Stage 7: convergence analysis (derived from main.json traces)
+# Stage 7: channel-bias ablation
+# ---------------------------------------------------------------------------
+
+def stage_bias(args, device) -> list:
+    """Compare `linear` (with per-channel bias) against `linear-nobias` (bias
+    zeroed and not learned) at C=4, 5 seeds. Reports best NLL and Gram-matrix
+    stats for both, to test whether the per-channel biases play any role in
+    the orthogonalisation."""
+    header(f"bias: linear vs. linear-nobias at C=4, {args.seeds} seeds")
+    out = []
+    for enc in ("linear", "linear-nobias"):
+        for s in range(args.seeds):
+            cfg = RunCfg(encoder=enc, C=4, seed=s,
+                         epochs=args.epochs, n_series=args.n_series)
+            t0 = time.time()
+            r, model, _ = train_and_trace(
+                cfg, device, log_every=args.log_every, return_model=True)
+            gram = model.encoder.gram_stats()
+            out.append(dict(
+                encoder=enc, seed=s,
+                best_val_nll=r["best_val_nll"],
+                best_val_acc=r["best_val_acc"],
+                norms=gram["norms"],
+                max_off_abs_cos=gram["max_off_abs_cos"],
+                mean_off_abs_cos=gram["mean_off_abs_cos"],
+            ))
+            print(f"  [{enc:>14} s={s}] "
+                  f"nll={r['best_val_nll']:.4f} "
+                  f"mean|cos|={gram['mean_off_abs_cos']:.4f} "
+                  f"({time.time()-t0:.1f}s)", flush=True)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Stage 8: convergence analysis (derived from main.json traces)
 # ---------------------------------------------------------------------------
 
 def stage_convergence(main_runs: list) -> list:
@@ -488,6 +522,23 @@ def write_summary(out_dir: str, results: dict) -> None:
                          f"{np.mean(nlls):.4f}±{np.std(nlls):.4f}  "
                          f"{np.mean(accs):.3f}±{np.std(accs):.3f}")
 
+    if "bias" in results:
+        lines.append("\n" + "=" * 70)
+        lines.append("BIAS ABLATION (linear vs. linear-nobias, C=4, 5 seeds)")
+        lines.append("=" * 70)
+        g = defaultdict(list)
+        for r in results["bias"]:
+            g[r["encoder"]].append(r)
+        lines.append(f"  {'encoder':>14}  {'nll':>17}  {'mean|cos|':>11}  "
+                     f"{'max|cos|':>10}")
+        for enc, rs in sorted(g.items()):
+            nlls = [r["best_val_nll"] for r in rs]
+            mc = [r["mean_off_abs_cos"] for r in rs]
+            xc = [r["max_off_abs_cos"] for r in rs]
+            lines.append(f"  {enc:>14}  "
+                         f"{np.mean(nlls):.4f}±{np.std(nlls):.4f}  "
+                         f"{np.mean(mc):.4f}  {np.mean(xc):.4f}")
+
     if "convergence" in results:
         lines.append("\n" + "=" * 70)
         lines.append("CONVERGENCE (epochs to within +0.05 NLL of own best)")
@@ -574,6 +625,12 @@ def main() -> None:
         with open(os.path.join(args.out, "etth1.json"), "w") as f:
             json.dump(et, f, indent=2)
 
+    if "bias" in args.stages:
+        bi = stage_bias(args, device)
+        results["bias"] = bi
+        with open(os.path.join(args.out, "bias.json"), "w") as f:
+            json.dump(bi, f, indent=2)
+
     if "convergence" in args.stages:
         # Convergence requires main traces. If `main` wasn't run this session,
         # try loading from disk so the stage still works.
@@ -589,6 +646,22 @@ def main() -> None:
             results["convergence"] = conv
             with open(os.path.join(args.out, "convergence.json"), "w") as f:
                 json.dump(conv, f, indent=2)
+
+    # Load any stage outputs already on disk that weren't run this session,
+    # so a partial-stage invocation still produces a complete summary.txt.
+    _STAGE_FILES = {
+        "main": "main.json", "dmodel": "dmodel.json",
+        "geometry": "geometry.json", "probe": "probe.json",
+        "mask": "mask.json", "etth1": "etth1.json",
+        "convergence": "convergence.json", "bias": "bias.json",
+    }
+    for key, fname in _STAGE_FILES.items():
+        if key in results:
+            continue
+        path = os.path.join(args.out, fname)
+        if os.path.exists(path):
+            with open(path) as f:
+                results[key] = json.load(f)
 
     header(f"DONE in {time.time()-t0:.0f}s total")
     write_summary(args.out, results)

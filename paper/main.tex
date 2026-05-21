@@ -96,7 +96,7 @@ and can this interaction be improved?
 \paragraph{Our contribution.}
 We compare eight encoders on a controlled synthetic benchmark designed
 to make channel identity informative, with supporting experiments on
-the public ETTh1 dataset. We find that: (i)~the per-channel linear
+the public ETTh1 dataset \citep{zhou2021informer}. We find that: (i)~the per-channel linear
 projection matches every alternative at convergence; (ii)~a
 shared-scalar baseline has a sharp, capacity-independent ceiling;
 (iii)~the task loss drives the learned $W_k$ to near-orthogonal
@@ -189,12 +189,77 @@ length $C{\cdot}T$, causal across time, bidirectional within a time
 step. Attention: $\mathcal{O}((CT)^2)$; skipped at $C{=}16$.
 
 \subsection{Training protocol}
+\label{sec:method-training}
 
-AdamW optimiser, learning rate $3{\times}10^{-4}$ with cosine decay
-to $1\%$ of peak, weight decay $10^{-4}$, batch size 32, gradient clip
-1.0. Each configuration is run over 5 random seeds. Metrics are
-reported at the best validation NLL achieved during training (effective
-early stopping). All experiments use 300 epochs.
+Identical across encoders and across both datasets unless noted.
+
+\paragraph{Objective.} At every position $t \in \{0, \dots, T{-}1\}$
+the model emits logits $\ell_t \in \mathbb{R}^{K}$ and we minimise the
+next-step categorical cross-entropy
+\[
+\mathcal{L}_{\text{NLL}}
+  = -\frac{1}{B(T{-}1)} \sum_{b=1}^{B} \sum_{t=0}^{T-2}
+      \log\,\mathrm{softmax}(\ell_t^{(b)})_{\,y^{(b)}_{t+1}},
+\]
+where $y^{(b)}_t$ is the bin index at position $t$ in series $b$. The
+predicted distribution at position $t$ is supervised only by the bin
+at position $t+1$, and causal masking inside the transformer prevents
+the model from seeing $y_{t+1}$ at prediction time. The
+\textsc{sum-ortho} encoder adds the auxiliary loss
+$\lambda \sum_{i \ne j}(W_i \cdot W_j)^2 / 2$ with $\lambda{=}10^{-2}$;
+all other encoders have $\mathcal{L} = \mathcal{L}_{\text{NLL}}$.
+
+\paragraph{Optimiser.} AdamW with peak learning rate $3{\times}10^{-4}$,
+weight decay $10^{-4}$, and PyTorch defaults for momentum
+($\beta_1{=}0.9$, $\beta_2{=}0.999$, $\epsilon{=}10^{-8}$).
+Gradient norm is clipped to $1.0$ per step. Batch size is $32$. No
+warm-up. Learning rate follows a cosine annealing schedule from peak
+to $3{\times}10^{-6}$ ($1\%$ of peak) over the full $300$ epochs.
+
+\paragraph{Train/val split.}
+For the synthetic benchmark we generate $n_{\text{series}}{=}512$
+length-$T{=}160$ series per seed and split with a seeded
+\texttt{torch.utils.data.random\_split} into
+$461 / 51$ ($\approx 90/10$) train and val.
+For ETTh1 we follow the dataset's standard chronological partition,
+using the train block to fit per-variate standardisation statistics
+and the quantile bin edges for the target, and evaluating on the val
+block. Data loaders use \texttt{shuffle=True} for training,
+\texttt{shuffle=False} for validation, batch size $32$ in both cases.
+
+\paragraph{Validation cadence and model selection.} Validation NLL and
+top-$1$ bin accuracy are evaluated every $20$ epochs, plus at epoch
+$1$ and epoch $300$ (giving a trace of $17$ points). We do not
+actually halt training early; instead, we report the best validation
+NLL observed along this trace, together with the accuracy at that
+same epoch (``effective early stopping''). This decouples our headline
+metric from slight differences in convergence epoch across encoders
+while still letting every run see the full $300$-epoch schedule.
+
+\paragraph{Seeds and reproducibility.}
+Each configuration is run over $5$ random seeds, indexed $0$ through
+$4$. Seed $s$ sets \texttt{torch.manual\_seed(s)} (controlling weight
+initialisation and dropout) and seeds the \texttt{torch.Generator}
+passed to \texttt{random\_split} (controlling the train/val
+partition). On the synthetic benchmark, seed $s$ also drives the
+\texttt{numpy} RNG that generates the input series themselves.
+\emph{The same five seeds are reused for every encoder variant, every
+$C$, and every $d_{\text{model}}$.} This is a paired-seed design:
+at a fixed $s$, every encoder sees identical training data and the
+identical train/val partition, and only the model architecture (and
+its initial parameter draws from the shared PRNG state) differs.
+The comparisons in this paper are reported as unpaired
+mean$\,\pm\,$std intervals for simplicity, but the paired structure is
+available in the saved per-run records and would yield tighter
+intervals (and a cleaner test of small effects like the
+\textsc{linear-ppe} gap) under a paired-difference analysis.
+We do not enable
+\texttt{torch.use\_deterministic\_algorithms(True)}, so CUDA matmul
+nondeterminism contributes some additional seed-level variation
+between full re-runs; the reported $\pm\,$std intervals capture this.
+All headline numbers in this paper are means $\pm$ sample standard
+deviations over the five seeds, computed at each run's best
+validation NLL epoch.
 
 \subsection{Datasets}
 
@@ -212,12 +277,103 @@ binned into $K{=}32$ quantile bins. Channels $k \ge 4$ are independent
 distractors. The task is designed so that an encoder that mixes channels
 at the input layer cannot recover the interaction structure.
 
-\paragraph{ETTh1.} Electricity Transformer Temperature (hourly, 7
-variates). We standardise on the train split, bin the target variate
+\paragraph{ETTh1.} Electricity Transformer Temperature
+\citep{zhou2021informer}, hourly, 7 variates. We standardise on the
+train split, bin the target variate
 OT into 32 quantile bins, and predict the next-step bin given all 7
 variates over $T{=}160$. The model uses $d_{\text{model}}{=}56$
 (divisible by $C{=}7$), 7 heads, $d_{\text{ff}}{=}224$; training is
 otherwise identical.
+
+\subsection{Diagnostic analyses}
+\label{sec:method-diagnostics}
+
+Beyond aggregate NLL, we use three diagnostics to inspect what the
+per-channel-$W_k$ encoders actually learn. Each is computed after
+full 300-epoch training, on five seeds unless stated otherwise.
+
+\paragraph{Gram-matrix analysis.}
+\textsc{linear} and \textsc{sum-ortho} differ only in whether the
+soft-orthogonality penalty
+$L_{\text{ortho}} = \lambda \sum_{i \ne j}(W_i \cdot W_j)^2/2$ is added
+to the loss. If both reach the same NLL, the question is whether
+\textsc{linear}'s $W_k$ are geometrically similar to
+\textsc{sum-ortho}'s---i.e.\ whether the task pressure alone already
+produces a near-orthogonal arrangement---or whether the two encoders
+arrive at the same loss through different geometries.
+
+After training we extract the per-channel projection matrix $W \in
+\mathbb{R}^{C \times d_{\text{model}}}$ (rows $W_k$) from the encoder
+and compute the cosine matrix $G_{ij} = (W_i \cdot W_j) / (\|W_i\|
+\|W_j\|)$. Two scalar summaries:
+\[
+\overline{|\cos|} = \frac{1}{C(C-1)} \sum_{i \ne j} |G_{ij}|,
+\qquad
+\max|\cos| = \max_{i \ne j} |G_{ij}|.
+\]
+Both go to zero iff the $W_k$ become mutually orthogonal. We report
+seed-averaged means.
+
+\paragraph{Encoding-space allocation.}
+Orthogonality says channels are distinguishable; it does not say
+whether the model dedicates more representational capacity to
+outcome-relevant channels than to distractors. We measure two
+quantities, both at the encoder output:
+
+(i)~Norm $\|W_k\|$ for each channel. A larger norm means channel $k$'s
+contribution $W_k v_k(t) + b_k$ has larger magnitude in the embedding,
+i.e.\ occupies more of the residual stream.
+
+(ii)~Per-channel variance fraction. The encoder output is a sum of
+per-channel contributions $W_k v_k(t) + b_k$. Treating each
+contribution as a random vector indexed by $(t, \text{batch})$, the
+per-channel variance is
+\[
+\sigma^2_k = \sum_{d=1}^{d_{\text{model}}}
+             \operatorname{Var}_{t,\text{batch}}\!\big[(W_k v_k(t) + b_k)_d\big],
+\]
+and we report fractions $\sigma^2_k / \sum_j \sigma^2_j$ on a held-out
+batch. This combines the size of $W_k$ with the empirical variability
+of channel $k$'s input distribution.
+
+For both metrics, channels are partitioned into drivers ($k \in
+\{0,1,2,3\}$, which enter the outcome formula) and distractors
+($k \ge 4$, independent of the outcome). Reporting them this way lets
+us check whether the model independently discovered the
+driver/distractor split.
+
+\paragraph{Linear-probing analysis.}
+The encoder lays down a representation; the question is whether
+downstream attention and FFN layers preserve enough of it that each
+channel remains linearly identifiable several blocks deep. We test
+this by training closed-form ridge probes from a frozen hidden state
+back to the raw input.
+
+Procedure: (1)~train the encoder--transformer end-to-end as usual;
+(2)~freeze it; (3)~generate a fresh probe dataset
+(\texttt{MultiSignalDataset} with a different seed, so the model has
+not been trained on it); (4)~for each layer of interest, pass the
+probe dataset through and collect hidden states
+$H \in \mathbb{R}^{N \times d_{\text{model}}}$ alongside the
+corresponding raw inputs $X \in \mathbb{R}^{N \times C}$; (5)~solve
+the ridge regression
+\[
+W_{\text{probe}} = (H^\top H + \lambda I)^{-1} H^\top X,
+\qquad \lambda = 10^{-3},
+\]
+in closed form on a probe-train split; (6)~evaluate held-out
+$R^2$ per channel on a probe-validation split:
+$R^2_k = 1 - \mathrm{SS}_{\text{res},k} / \mathrm{SS}_{\text{tot},k}$.
+
+We probe two layers: layer 0 (the encoder output, i.e.\ the input to
+the first transformer block) and layer 3 (the output of the third and
+final transformer block, before the LayerNorm and the categorical
+head). $R^2 = 1$ at layer 0 confirms the encoder writes the raw
+channel into a linearly recoverable subspace; $R^2$ at layer 3 reveals
+how much of that recoverability survives the depth of the model.
+\textsc{ci} and \textsc{cat} are excluded because their hidden states
+have a fundamentally different shape (per-channel stream and per-token
+respectively), so a single $H \to X$ probe does not apply.
 
 % ======================================================================
 \section{Results}
@@ -285,8 +441,8 @@ this dataset.
 
 \textsc{linear} has no mechanism pushing the $W_k$ toward orthogonality;
 \textsc{sum-ortho} adds an explicit penalty. Both produce the same NLL
-to four decimals. We measure the cosine similarity between all pairs
-$(W_i, W_j)$ with $i \ne j$ at the end of training.
+to three decimals. Applying the off-diagonal cosine diagnostic from
+Section~\ref{sec:method-diagnostics} gives:
 
 \begin{table}[h]
 \centering
@@ -309,13 +465,51 @@ factor of ${\sim}3.5$ to $0.010$ but does not improve downstream NLL.
 The task loss itself provides enough gradient pressure to separate the
 per-channel projections once they exist as free parameters.
 
+\subsection{Bias ablation: the biases play no role in the geometry}
+\label{sec:results-bias}
+
+\textsc{linear}'s forward pass is $h(t) = \sum_k (W_k v_k(t) + b_k) +
+\mathbf{p}(t)$. Distributing the sum, the per-channel biases collapse
+into a single $d_{\text{model}}$-dimensional constant offset
+$B = \sum_k b_k$ that is added to every embedding regardless of input
+or position. Algebraically, the $C \times d_{\text{model}}$ bias
+parameters are an over-parameterised reparameterisation of one global
+offset, and they never enter the cosine computation in
+Table~\ref{tab:gram}. To confirm experimentally that they play no role
+in the orthogonalisation, we retrain \textsc{linear} with the
+\texttt{channel\_bias} parameter zeroed and frozen
+(\textsc{linear-nobias}):
+
+\begin{table}[h]
+\centering
+\caption{Channel-bias ablation ($C{=}4$, 300 epochs, 5 seeds).}
+\label{tab:bias}
+\begin{tabular}{lccc}
+\toprule
+encoder              & val NLL $\downarrow$ & mean $|\cos|$ & $\max |\cos|$ \\
+\midrule
+\textsc{linear}        & $2.169 \pm 0.014$ & $0.036$ & $0.082$ \\
+\textsc{linear-nobias} & $2.177 \pm 0.013$ & $0.036$ & $0.083$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+NLL is unchanged within seed std, and the Gram statistics match to
+three decimals. The $C \cdot d_{\text{model}} = 256$ bias parameters at
+this configuration are $0.17\%$ of the full model's ${\sim}152$K
+parameters, so the saving is too small to drive a practical
+recommendation; we retain the bias in the headline definition of
+\textsc{linear} to match the PyTorch \texttt{nn.Linear} default. The
+point of this ablation is epistemic: it confirms that the geometric
+argument in this paper is bias-independent.
+
 \subsection{Encoding space allocation}
 \label{sec:results-space}
 
-Beyond separating channels, does the model allocate more encoding space
-to channels that matter more? We measure $\|W_k\|$ norms and per-channel
-variance fractions $\text{Var}(W_k \cdot v_k) / \sum_j \text{Var}(W_j
-\cdot v_j)$ at $C \in \{4, 8, 16\}$.
+Beyond separating channels, does the model allocate more encoding
+space to channels that matter more? Using the norm and
+variance-fraction diagnostics from
+Section~\ref{sec:method-diagnostics}, at $C \in \{4, 8, 16\}$:
 
 \begin{table}[h]
 \centering
@@ -351,10 +545,12 @@ both channel counts.
 
 \input{tables/probe.tex}
 
-Closed-form ridge probes from the hidden state to the raw input show
-that all per-channel-$W_k$ encoders achieve $R^2 \approx 1.0$ at the
-input layer and $R^2 \ge 0.84$ at layer 3. \textsc{sum} collapses to
-$R^2 \approx 0.24$ at every depth.
+Following the procedure in Section~\ref{sec:method-diagnostics}, all
+per-channel-$W_k$ encoders achieve $R^2 \approx 1.0$ at the encoder
+output (layer 0) and $R^2 \ge 0.84$ at the output of the third
+transformer block. \textsc{sum} collapses to $R^2 \approx 0.24$ at
+every depth---channel identity is unrecoverable from the embedding it
+produces.
 
 \subsection{Channel masking}
 \label{sec:results-mask}
