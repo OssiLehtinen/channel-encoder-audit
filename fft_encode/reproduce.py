@@ -22,6 +22,9 @@ Stages (default: all)
     bias        channel-bias ablation (linear vs linear-nobias, C=4)
     geom_largen large-N geometry: linear at C=8 with 10x training data,
                 probes the distractor-norm noise-floor hypothesis
+    main_largen top-tier encoders at C=16 with 10x training data, to
+                test whether the C=16 encoder ranking persists when
+                the model is no longer data-limited
 
 Outputs
 -------
@@ -34,6 +37,7 @@ Outputs
     <out>/convergence.json
     <out>/bias.json
     <out>/geom_largen.json
+    <out>/main_largen.json
     <out>/summary.txt        human-readable aggregate of everything
 """
 
@@ -66,7 +70,7 @@ ENCODERS_PROBE = ["sum", "linear", "sum-ortho", "mlp", "linear-ppe", "concat"]
 ENCODERS_DMODEL = ["sum", "concat"]
 
 ALL_STAGES = ["main", "dmodel", "geometry", "probe", "mask", "etth1",
-              "convergence", "bias", "geom_largen"]
+              "convergence", "bias", "geom_largen", "main_largen"]
 
 
 def header(s: str) -> None:
@@ -376,6 +380,37 @@ def stage_geom_largen(args, device) -> list:
 
 
 # ---------------------------------------------------------------------------
+# Stage 7c: large-N main sweep at C=16 (top-tier encoders)
+# ---------------------------------------------------------------------------
+
+def stage_main_largen(args, device) -> list:
+    """Test whether the C=16 encoder ranking observed at the main-sweep
+    N=512 persists when the model is no longer data-limited. Trains the
+    top-tier encoders (linear, mlp, sum-ortho, linear-ppe, concat by
+    default) at the configured C with n_series=N_large, otherwise
+    identical to the main stage. Lets us paired-test mlp's lead at
+    C=16 in the data-rich regime."""
+    header(f"main_largen: {args.main_largen_encoders} at C={args.main_largen_C}, "
+           f"n_series={args.main_largen_n_series}, "
+           f"{args.main_largen_seeds} seeds")
+    out = []
+    for enc in args.main_largen_encoders:
+        for s in range(args.main_largen_seeds):
+            cfg = RunCfg(encoder=enc, C=args.main_largen_C, seed=s,
+                         epochs=args.epochs,
+                         n_series=args.main_largen_n_series)
+            t0 = time.time()
+            r = train_and_trace(cfg, device, log_every=args.log_every)
+            out.append(r)
+            print(f"  [{enc:>10} C={args.main_largen_C} s={s} "
+                  f"N={args.main_largen_n_series}] "
+                  f"best_nll={r['best_val_nll']:.4f}@ep{r['best_epoch']:>3} "
+                  f"acc={r['best_val_acc']:.3f} "
+                  f"({time.time()-t0:.1f}s)", flush=True)
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Stage 7: channel-bias ablation
 # ---------------------------------------------------------------------------
 
@@ -569,6 +604,25 @@ def write_summary(out_dir: str, results: dict) -> None:
                          f"{np.mean(nlls):.4f}±{np.std(nlls):.4f}  "
                          f"{np.mean(accs):.3f}±{np.std(accs):.3f}")
 
+    if "main_largen" in results:
+        lines.append("\n" + "=" * 70)
+        lines.append("MAIN SWEEP AT LARGE N (top-tier encoders, "
+                     "data-rich regime)")
+        lines.append("=" * 70)
+        g = defaultdict(list)
+        for r in results["main_largen"]:
+            g[(r["cfg"]["encoder"], r["cfg"]["C"],
+               r["cfg"]["n_series"])].append(r)
+        for key in sorted(g.keys()):
+            enc, C, N = key
+            rs = g[key]
+            nlls = [r["best_val_nll"] for r in rs]
+            accs = [r["best_val_acc"] for r in rs]
+            lines.append(f"  {enc:>12}  C={C}  N={N}  "
+                         f"nll={np.mean(nlls):.4f}±{np.std(nlls):.4f}  "
+                         f"acc={np.mean(accs):.3f}±{np.std(accs):.3f}  "
+                         f"(n={len(rs)})")
+
     if "geom_largen" in results:
         lines.append("\n" + "=" * 70)
         lines.append("GEOMETRY AT LARGE N (linear at C=8, distractor "
@@ -650,6 +704,17 @@ def main() -> None:
                         "(default: 5120 = 10x the main-sweep N=512)")
     p.add_argument("--geom-largen-seeds", type=int, default=1,
                    help="seed count for the geom_largen stage (default: 1)")
+    p.add_argument("--main-largen-encoders", nargs="+",
+                   default=["linear", "mlp", "sum-ortho",
+                            "linear-ppe", "concat"],
+                   help="encoders for the main_largen stage")
+    p.add_argument("--main-largen-C", type=int, default=16,
+                   help="channel count for the main_largen stage")
+    p.add_argument("--main-largen-n-series", type=int, default=5120,
+                   help="n_series for the main_largen stage "
+                        "(default: 5120 = 10x the main-sweep N=512)")
+    p.add_argument("--main-largen-seeds", type=int, default=5,
+                   help="seed count for the main_largen stage (default: 5)")
     p.add_argument("--stages", nargs="+", choices=ALL_STAGES,
                    default=ALL_STAGES,
                    help="which stages to run (default: all)")
@@ -711,6 +776,12 @@ def main() -> None:
         with open(os.path.join(args.out, "geom_largen.json"), "w") as f:
             json.dump(gln, f, indent=2)
 
+    if "main_largen" in args.stages:
+        mln = stage_main_largen(args, device)
+        results["main_largen"] = mln
+        with open(os.path.join(args.out, "main_largen.json"), "w") as f:
+            json.dump(mln, f, indent=2)
+
     if "convergence" in args.stages:
         # Convergence requires main traces. If `main` wasn't run this session,
         # try loading from disk so the stage still works.
@@ -735,6 +806,7 @@ def main() -> None:
         "mask": "mask.json", "etth1": "etth1.json",
         "convergence": "convergence.json", "bias": "bias.json",
         "geom_largen": "geom_largen.json",
+        "main_largen": "main_largen.json",
     }
     for key, fname in _STAGE_FILES.items():
         if key in results:

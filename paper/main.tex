@@ -39,18 +39,19 @@ architectures, and a projected positional encoding---on a synthetic
 benchmark where channel identity is informative and on ETTh1 as a
 real-data check. At convergence the standard per-channel linear projection
 (\texttt{nn.Linear(C, $d_{\text{model}}$)}) matches every alternative
-we test to within seed noise on the synthetic benchmark. A variant
-that projects the sinusoidal positional encoding through a learned
-linear layer (\textsc{linear-ppe}) shows a small (${\sim}0.05$ NLL)
-advantage at $C{=}4$ that is robust to paired-difference analysis
-(${\sim}0.054$ mean gap, paired $t$-test $p{=}0.009$ on five seeds,
-all five paired differences positive). The gap shrinks with channel
-count---${\sim}0.037$ at $C{=}8$ and indistinguishable from zero at
-$C{=}16$. The underlying mechanism (positional--channel
-orthogonalisation vs.\ positional subspace compression) is not
-measured directly here, and the $C$-dependence is in fact
-inconsistent with the naive form of either reading, since both would
-predict the gap to grow with $C$ under fixed $d_{\text{model}}$. On ETTh1 the
+we test to within seed noise on the synthetic benchmark. Two encoders deviate from the linear family under paired-difference
+analysis. At $C{=}4$, a variant that projects the sinusoidal
+positional encoding through a learned linear layer
+(\textsc{linear-ppe}) leads by ${\sim}0.054$ NLL (paired $t$-test
+$p{=}0.009$, 5/5 paired differences positive); the gap shrinks with
+channel count and is absent by $C{=}16$. At $C{=}16$ a two-layer
+MLP encoder pulls ahead of the linear family by ${\sim}0.06$--$0.12$
+NLL (paired $p \in \{0.0003, 0.008\}$ depending on comparator, 5/5
+favouring \textsc{mlp} in each case). The underlying mechanism for
+\textsc{linear-ppe} is not measured directly, and the $C$-dependence
+is in fact inconsistent with the naive form of either reading
+(orthogonalisation, compression), since both would predict the gap
+to grow with $C$ under fixed $d_{\text{model}}$. On ETTh1 the
 per-channel-$W_k$ family again ties at the top, but the
 channel-as-token baseline (\textsc{cat}), which underperforms on the
 synthetic task, here posts the lowest mean NLL---with overlapping
@@ -108,11 +109,15 @@ projection matches every alternative at convergence; (ii)~a
 shared-scalar baseline has a sharp, capacity-independent ceiling;
 (iii)~the task loss drives the learned $W_k$ to near-orthogonal
 subspaces and scales their norms larger for outcome-relevant channels;
-and (iv)~projecting the sinusoidal positional encoding through a
-learned linear layer (\textsc{linear-ppe}) shows a small improvement
-at $C{=}4$ that is at the edge of what five seeds can resolve, with
-a mechanism (orthogonalisation vs.\ compression of the positional
-subspace) we cannot pin down from the present data.
+and (iv)~the encoder landscape is mostly flat but not perfectly so
+under paired-difference analysis: at $C{=}4$, a projected positional
+encoding (\textsc{linear-ppe}) gains ${\sim}0.054$ NLL over
+\textsc{linear} (paired $p{=}0.009$, 5/5); at $C{=}16$ a two-layer
+MLP encoder gains ${\sim}0.06$--$0.12$ NLL over the linear family
+(paired $p \in \{0.0003, 0.008\}$, 5/5); on ETTh1
+channel-as-token (\textsc{cat}) edges the rest. The encoder that
+wins is not the same at every $C$ and dataset, even though the
+practical gap to plain \textsc{linear} is small.
 
 % ======================================================================
 \section{Method}
@@ -336,11 +341,18 @@ $C$, and every $d_{\text{model}}$.} This is a paired-seed design:
 at a fixed $s$, every encoder sees identical training data and the
 identical train/val partition, and only the model architecture (and
 its initial parameter draws from the shared PRNG state) differs.
-The comparisons in this paper are reported as unpaired
-mean$\,\pm\,$std intervals for simplicity, but the paired structure is
-available in the saved per-run records and would yield tighter
-intervals (and a cleaner test of small effects like the
-\textsc{linear-ppe} gap) under a paired-difference analysis.
+We \emph{report} unpaired mean$\,\pm\,$std intervals throughout for
+readability and to match the conventions of the surrounding
+literature, but we \emph{test} with paired-difference statistics
+where the unpaired interval is loose enough that paired analysis
+changes the conclusion. Concretely: where the paired and unpaired
+test agree qualitatively (most rows in this paper), we report only
+the unpaired interval; where they disagree, or where the unpaired
+$p$-value is borderline, we report the paired result and call it
+out. Three such comparisons appear: the \textsc{linear-ppe} gap at
+$C{=}4$ (Section~\ref{sec:results-pospro}), the \textsc{mlp} lead at
+$C{=}16$ (Section~\ref{sec:results-scaling}), and the \textsc{cat}
+lead on ETTh1 (Section~\ref{sec:results-etth1}).
 We do not enable
 \texttt{torch.use\_deterministic\_algorithms(True)}, so CUDA matmul
 nondeterminism contributes some additional seed-level variation
@@ -505,13 +517,20 @@ $\mathcal{O}((CT)^2)$ attention cost.}
 
 All encoders degrade as $C$ grows (channels $k \ge 4$ are distractors).
 The per-channel-$W_k$ family stays clustered at the top across
-$C \in \{4, 8, 16\}$. The gap to \textsc{sum} widens rather than
+$C \in \{4, 8, 16\}$, and the gap to \textsc{sum} widens rather than
 narrows. One detail worth flagging: at $C{=}16$, \textsc{mlp} pulls
-ahead of the linear family (val NLL $2.221$ vs.\ $2.28$--$2.30$),
-mirroring the way \textsc{linear-ppe} pulls ahead at smaller $C$.
-With five seeds and the differences sitting at the seed-std boundary
-we do not read either as decisive; the point is that the top tier
-is narrow but its leader is not the same encoder at every $C$.
+ahead of the linear family (val NLL $2.221$ vs.\ $2.28$--$2.30$).
+Under unpaired analysis the difference sits at the seed-std boundary,
+but a paired-difference test (Section~\ref{sec:method-training}) is
+unambiguous: all five paired-seed differences favour \textsc{mlp} over
+each of \textsc{linear} (paired $p{=}0.004$), \textsc{sum-ortho}
+($p{=}0.008$), \textsc{linear-ppe} ($p{=}0.007$), and \textsc{concat}
+($p{=}0.0003$). At $C{=}16$ the linear family is no longer the top
+tier; \textsc{mlp} is. Combined with the \textsc{linear-ppe} lead at
+$C{=}4$, the picture is that the top tier is narrow but its leader is
+\emph{not} the same encoder at every $C$: the small-$C$ winner is
+\textsc{linear-ppe}, the large-$C$ winner is \textsc{mlp}, and at
+$C{=}8$ the linear family is tightest.
 
 \subsection{Model-width scaling}
 \label{sec:results-dmodel}
@@ -820,18 +839,21 @@ ETTh1: the per-channel-$W_k$ family (\textsc{linear}, \textsc{sum-ortho},
 
 One genuine difference from the synthetic ranking: \textsc{cat}, which
 sits in the middle of the synthetic table, here posts the lowest mean
-NLL ($0.541$). We do not want to overinterpret this. The NLL
-confidence interval barely separates from \textsc{concat}/\textsc{linear}
-(\textsc{cat}'s upper bound $0.552$ versus \textsc{concat}'s lower
-bound $0.550$), and best-bin accuracies across the top tier are
-indistinguishable ($0.77$--$0.79$ with seed std ${\sim}0.01$).
-Read carefully, the finding is not that channel-as-token wins on real
-data, but that its synthetic-benchmark disadvantage disappears. A
-plausible reading is that ETTh1's seven variates are all genuinely
-informative measurements of the same physical system, so the
-fine-grained cross-variate attention \textsc{cat} enables can pay,
-whereas the synthetic benchmark's four drivers plus distractors does
-not reward that extra modelling capacity.
+NLL ($0.541$). Paired-difference tests place it cleanly above
+\textsc{mlp} ($p{=}0.006$, 5/5 paired diffs) and \textsc{linear-ppe}
+($p{=}0.002$, 5/5), but its margin over \textsc{linear},
+\textsc{sum-ortho}, and \textsc{concat} is borderline (paired
+$p \in \{0.083, 0.055, 0.065\}$ respectively; directional 4--5 paired
+diffs out of 5 favour \textsc{cat} in each case). Best-bin accuracies
+across the top tier are indistinguishable ($0.77$--$0.79$ with seed
+std ${\sim}0.01$). Read carefully, the finding is not that
+channel-as-token decisively wins on real data, but that its
+synthetic-benchmark disadvantage disappears and a directional lead
+emerges. A plausible reading is that ETTh1's seven variates are all
+genuinely informative measurements of the same physical system, so
+the fine-grained cross-variate attention \textsc{cat} enables can
+pay, whereas the synthetic benchmark's four drivers plus distractors
+does not reward that extra modelling capacity.
 
 % ======================================================================
 \section{Discussion}
@@ -892,9 +914,23 @@ before the sum.
 with no penalty; the regulariser tightens to ${\approx}0.010$ without
 changing NLL. The task loss provides the gradient pressure.
 
-\paragraph{Nonlinearity is redundant.}
-\textsc{mlp} ($9{\times}$ more encoder params) converges more slowly to
-the same NLL. A linear projection of the channel vector is sufficient.
+\paragraph{Nonlinearity is redundant at small $C$, useful at large $C$.}
+\textsc{mlp} matches \textsc{linear} at $C{=}4$ with $9{\times}$ more
+encoder parameters and no faster convergence
+(Table~\ref{tab:convergence}); a linear projection of the channel
+vector is sufficient in that regime. At $C{=}16$ the picture flips:
+paired-difference tests
+(Section~\ref{sec:results-scaling}) show \textsc{mlp} ahead of the
+entire linear family by ${\sim}0.06$--$0.12$ NLL, with all five
+paired-seed differences favouring \textsc{mlp} and paired
+$p$-values from $0.0003$ to $0.008$. A plausible reading: with four
+drivers and many more distractors, the nonlinearity buys the encoder
+a useful gating on the channel vector that a linear projection cannot
+match. We do not pin down the mechanism here, but the pattern is
+clean enough to read as more than seed noise. The recommendation in
+the Conclusion still favours \textsc{linear} as the default---the
+gap is small and the architecture cost real---but a one-line caveat
+is warranted for the high-$C$ regime.
 
 \paragraph{Importance weighting is automatic.}
 At $C{=}8$, driver channels get ${\sim}2.2{\times}$ larger
@@ -911,9 +947,11 @@ The paired-seed analysis in
 Section~\ref{sec:results-pospro} establishes the $C{=}4$ gap as small
 but solid: mean $\Delta = 0.054$ NLL, paired $t$-test $p{=}0.009$,
 five out of five paired differences favouring \textsc{linear-ppe}.
-What was previously framed as ``edge of what our sample resolves''
-turns out to be an artefact of the unpaired comparison; with paired
-seeds the gap is several standard errors above zero.
+The unpaired mean$\,\pm\,$std intervals we report in
+Table~\ref{tab:main} are conservative for this comparison; the paired
+test makes use of the shared data and partition between
+\textsc{linear} and \textsc{linear-ppe} runs at each seed and places
+the gap several standard errors above zero.
 
 The $C$-dependence is the more interesting open question. At $C{=}8$
 the mean gap is $0.037$ (paired $p{=}0.06$, unpaired $p{=}0.014$);
@@ -947,12 +985,16 @@ On the synthetic benchmark, where drivers and distractors are mixed,
 it sits well below the per-channel-$W_k$ tier ($2.37$ vs.\ ${\sim}2.17$
 NLL at $C{=}4$). On ETTh1, where all seven variates are informative
 measurements of one physical system, that gap closes and \textsc{cat}
-posts the lowest mean NLL---though its confidence interval barely
-separates from the next-best encoder and best-bin accuracies in the
-top tier are indistinguishable. We read this as a domain-dependent
-split rather than a clean win: \textsc{cat}'s cross-variate attention
-appears to pay only when the channels share structure worth
-attending to.
+posts the lowest mean NLL. Paired-difference tests
+(Section~\ref{sec:results-etth1}) place it decisively above
+\textsc{mlp} (paired $p{=}0.006$) and \textsc{linear-ppe} ($p{=}0.002$),
+but its margin over \textsc{linear}, \textsc{sum-ortho}, and
+\textsc{concat} is borderline (paired $p \in \{0.06, 0.08\}$) with
+4--5 of 5 paired differences favouring \textsc{cat} in each case.
+Best-bin accuracies in the top tier are indistinguishable. We read
+this as a domain-dependent split rather than a clean win:
+\textsc{cat}'s cross-variate attention appears to pay only when the
+channels share structure worth attending to.
 
 \paragraph{No convergence-time penalty for involved encoders.}
 \textsc{mlp}, \textsc{sum-ortho}, and \textsc{linear-ppe} reach within
@@ -1054,13 +1096,18 @@ projections to near-orthogonality, and learned norms are larger for
 outcome-relevant channels. A shared-scalar projection has a
 capacity-independent ceiling. Nonlinearity, block partitioning,
 orthogonality penalties, and channel-independent architectures do not
-improve on the bare linear layer within seed noise. Two variants
-deserve a footnote rather than a full carve-out: \textsc{linear-ppe}
-shows a small synthetic-benchmark advantage at $C{=}4$ that is at the
-edge of what five seeds resolve, and channel-as-token (\textsc{cat})
-posts the lowest mean NLL on ETTh1 with overlapping confidence
-intervals and indistinguishable accuracies---a domain-dependent
-narrowing of the synthetic gap, not a robust win. The practical
+improve on the bare linear layer within seed noise. Three variants deserve a footnote rather than a full carve-out.
+\textsc{linear-ppe} shows a small but solid synthetic-benchmark
+advantage at $C{=}4$ (paired $p{=}0.009$) that collapses with channel
+count and is absent by $C{=}16$. \textsc{mlp} pulls ahead of the
+linear family at $C{=}16$ under paired analysis (paired
+$p{=}0.0003$--$0.008$, 5/5 paired diffs favouring \textsc{mlp}),
+suggesting a nonlinearity becomes useful when the channel-input
+space is large. And channel-as-token (\textsc{cat}) posts the lowest
+mean NLL on ETTh1, separating cleanly from \textsc{mlp} and
+\textsc{linear-ppe} under paired tests but only marginally from
+\textsc{linear}, \textsc{sum-ortho}, and \textsc{concat}---a
+domain-dependent narrowing of the synthetic gap, not a robust win. The practical
 recommendation is simple: use \texttt{nn.Linear(C, $d_{\text{model}}$)}
 for the channel encoding, and spend the complexity budget elsewhere
 unless your channels are dense, informative measurements of a single
