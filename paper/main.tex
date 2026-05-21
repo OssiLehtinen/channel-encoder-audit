@@ -585,11 +585,48 @@ is robust to data scale; the absolute size of the gaps is not.
 \input{tables/dmodel.tex}
 
 Table~\ref{tab:dmodel} varies $d_{\text{model}}$ over $\{64, 128, 256\}$
-at $C{=}4$. The \textsc{sum} ceiling is sharp: $15{\times}$ more
-parameters move NLL by less than $0.005$. \textsc{concat}'s best NLL
-also degrades mildly as $d_{\text{model}}$ grows from $64$ to $256$
-($2.18 \to 2.33$), consistent with overfitting at larger widths on
-this dataset.
+at $C{=}4$, $5$ seeds, all top-tier encoders plus the \textsc{sum} and
+\textsc{concat} baselines.
+
+\paragraph{Three findings.}
+First, \textsc{sum}'s ceiling is structural and capacity-independent:
+$15{\times}$ more parameters move NLL by less than $0.01$, as
+expected from the information-theoretic argument later in
+Section~\ref{sec:results-bias}.
+
+Second, \emph{every} encoder shows clear overfitting at
+$d_{\text{model}} \ge 128$. Best val NLL is reached at epoch
+$\sim$$100$ ($d{=}128$) or $\sim$$40$ ($d{=}256$), after which val
+NLL drifts upward (catastrophically for \textsc{mlp} at $d{=}256$,
+where the end-of-training val NLL exceeds $\ln 32$). Effective early
+stopping (Section~\ref{sec:method-training}) is what protects the
+reported best-NLL numbers; the trajectories themselves are not
+converged. $C{=}4$ with $N_{\text{series}}{=}512$ does not justify a
+$256$-dim residual stream.
+
+Third, the linear family's best-val ceiling rises gently with
+$d_{\text{model}}$ ($2.17 \to 2.23 \to 2.35$ for \textsc{linear}),
+indicating that the optimal effective-stopping model gets worse as
+the model is given more capacity to overfit. \textsc{mlp} degrades
+fastest of the top tier ($2.17 \to 2.32 \to 2.40$) because its
+encoder parameters scale as $d_{\text{model}}^2$ and exacerbate the
+capacity mismatch. The C=4 small-channel regime does not reward
+nonlinearity, and gives it room to overfit when widened. This is in
+sharp contrast to $C{=}16$ where \textsc{mlp} leads
+(Section~\ref{sec:results-scaling}): the high-channel-pressure
+regime is what makes nonlinearity useful.
+
+\paragraph{\textsc{linear-ppe} continues to lead.}
+At every $d_{\text{model}}$ tested, \textsc{linear-ppe} achieves the
+lowest val NLL. The gap to \textsc{linear} is $0.050$ at $d{=}64$
+(paired $p{=}0.012$, 5/5), $0.011$ at $d{=}128$ (paired $p{=}0.56$,
+4/5; one seed flips), and $0.075$ at $d{=}256$ (paired $p{=}0.002$,
+5/5). The direction is robust (14/15 paired-seed comparisons favour
+\textsc{linear-ppe}) but the magnitude is non-monotonic in
+$d_{\text{model}}$, which neither naive mechanism for
+\textsc{linear-ppe} (compression of the positional subspace,
+positional--channel orthogonalisation) cleanly predicts. We discuss
+this further in Section~\ref{sec:results-pospro}.
 
 \subsection{Gram-matrix analysis: spontaneous orthogonality}
 \label{sec:results-gram}
@@ -821,6 +858,24 @@ same $d_{\text{model}}^2$ parameters; or
 small absolute gain. We do not measure any of these directly. The
 channel encoding itself remains a single linear layer in either case.
 
+\paragraph{$d_{\text{model}}$ sweep.}
+The model-width sweep (Section~\ref{sec:results-dmodel},
+Table~\ref{tab:dmodel}) extends the \textsc{linear-ppe} test to $C{=}4$
+across $d_{\text{model}} \in \{64, 128, 256\}$. \textsc{linear-ppe}
+achieves the lowest val NLL at every width tested. The paired gap to
+\textsc{linear} is $0.050$ at $d{=}64$ ($p{=}0.012$, 5/5), $0.011$ at
+$d{=}128$ ($p{=}0.56$, 4/5; pulled down by a single anomalous seed),
+and $0.075$ at $d{=}256$ ($p{=}0.002$, 5/5). Across $d_{\text{model}}$
+$14/15$ paired-seed comparisons favour \textsc{linear-ppe}. This
+muddles rather than discriminates the mechanism question: the
+compression reading predicts a monotonic increase with
+$d_{\text{model}}$ (more room to compress into) and the
+orthogonalisation reading predicts a monotonic decrease (more room
+means free $W_k$ columns can avoid position on their own); we see
+neither pattern cleanly. The robust finding is that \textsc{linear-ppe}
+helps reliably at $C{=}4$ across a $4{\times}$ range of widths, in a
+regime where the model is otherwise overfitting at the larger widths.
+
 \subsection{Convergence and wall-clock cost}
 \label{sec:results-convergence}
 
@@ -961,11 +1016,20 @@ before the sum.
 with no penalty; the regulariser tightens to ${\approx}0.010$ without
 changing NLL. The task loss provides the gradient pressure.
 
-\paragraph{Nonlinearity is redundant at small $C$, useful at large $C$.}
-\textsc{mlp} matches \textsc{linear} at $C{=}4$ with $9{\times}$ more
-encoder parameters and no faster convergence
+\paragraph{Nonlinearity is redundant at small $C$, harmful with width
+at small $C$, useful at large $C$.}
+\textsc{mlp} matches \textsc{linear} at $C{=}4, d_{\text{model}}{=}64$
+with $9{\times}$ more encoder parameters and no faster convergence
 (Table~\ref{tab:convergence}); a linear projection of the channel
-vector is sufficient in that regime. At $C{=}16$ the picture flips:
+vector is sufficient in that regime. Widening the model at $C{=}4$
+makes things worse: at $d_{\text{model}} \in \{128, 256\}$ all
+encoders show overfitting under our $N_{\text{series}}{=}512$
+training data, and \textsc{mlp} degrades fastest because its
+encoder parameters scale as $d_{\text{model}}^2$
+(Table~\ref{tab:dmodel}, the best-val NLL gap to \textsc{linear}
+grows from $0$ at $d{=}64$ to $\sim$$0.09$ at $d{=}128$ and
+$\sim$$0.05$ at $d{=}256$, both paired-significant with $5/5$ or
+$4/5$ favouring \textsc{linear}). At $C{=}16$ the picture flips:
 paired-difference tests
 (Section~\ref{sec:results-scaling}) show \textsc{mlp} ahead of the
 entire linear family by ${\sim}0.06$--$0.12$ NLL, with all five
@@ -1104,8 +1168,12 @@ need a probe-based analog.
       may not be penalised.
 \item Main sweep at $d_{\text{model}}{=}64$, $C \in \{4,8,16\}$;
       ETTh1 at $d_{\text{model}}{=}56$, $C{=}7$. The $d_{\text{model}}$
-      sweep covers only \textsc{sum} and \textsc{concat}. At larger
-      scales the overfitting dynamics may change.
+      sweep covers all top-tier encoders plus \textsc{sum} at
+      $d \in \{64, 128, 256\}, C{=}4$, but all encoders overfit at
+      $d \ge 128$ under the main-sweep training data
+      (Table~\ref{tab:dmodel}); the reported best-NLL numbers there
+      are effective-early-stopping minima rather than converged
+      values.
 \item The main sweep at $N_{\text{series}}{=}512$ is data-limited.
       $10\times$ training data improves all top-tier encoders by
       ${\sim}0.4$ NLL at $C{=}16$ (Table~\ref{tab:main-largen}); a
