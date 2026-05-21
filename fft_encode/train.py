@@ -44,6 +44,12 @@ def train_one(kind, train_loader, val_loader, args, device):
     print(f"[{kind}] params={n_params:,}")
 
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    sched = (
+        torch.optim.lr_scheduler.CosineAnnealingLR(
+            opt, T_max=args.epochs, eta_min=args.lr * 0.01,
+        )
+        if args.lr_schedule == "cosine" else None
+    )
     history = []
     for epoch in range(args.epochs):
         model.train()
@@ -52,13 +58,15 @@ def train_one(kind, train_loader, val_loader, args, device):
         for x, y in tqdm(train_loader, desc=f"[{kind}] ep{epoch}", leave=False):
             x, y = x.to(device), y.to(device)
             logits = model(x)
-            loss = nll_loss(logits, y)
+            loss = nll_loss(logits, y) + model.aux_loss()
             opt.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             opt.step()
             tot += loss.item() * x.size(0)
             n += x.size(0)
+        if sched is not None:
+            sched.step()
         train_loss = tot / n
         val_loss, val_acc = evaluate(model, val_loader, device)
         dt = time.time() - t0
@@ -91,6 +99,11 @@ def main():
         type=str,
         default="fdm,sum",
         help="comma-separated subset of {fdm,sum}",
+    )
+    p.add_argument(
+        "--lr-schedule", type=str, default="cosine",
+        choices=["cosine", "constant"],
+        help="LR schedule (cosine annealing to 1%% of lr, or constant)",
     )
     args = p.parse_args()
 

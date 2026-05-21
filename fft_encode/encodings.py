@@ -38,6 +38,48 @@ class SumEncoding(nn.Module):
         return emb
 
 
+class SumOrthoEncoding(nn.Module):
+    """Summation with a soft orthogonality regulariser on per-channel
+    projections.
+
+    Each channel k has its own learned projection W_k in R^{d_model} (no
+    sharing across channels). Embeddings are summed. The encoder exposes an
+    auxiliary loss:
+
+        L_ortho = lambda * sum_{i != j} (W_i . W_j)^2 / 2
+
+    Intended as a drop-in replacement for SumEncoding that gives the
+    optimiser a nudge toward channel-separated subspaces without imposing
+    hard orthogonality. If separation helps, the regulariser accelerates
+    what the optimiser would do anyway; if channels genuinely need to share
+    directions, the task loss overwhelms the regulariser.
+    """
+
+    def __init__(self, n_channels: int, d_model: int, max_len: int = 4096,
+                 ortho_lambda: float = 1e-2):
+        super().__init__()
+        self.C = n_channels
+        self.d_model = d_model
+        self.W = nn.Parameter(torch.empty(n_channels, d_model))
+        nn.init.normal_(self.W, std=1.0 / math.sqrt(d_model))
+        self.channel_bias = nn.Parameter(torch.zeros(n_channels, d_model))
+        self.register_buffer("pos", _sinusoidal_positions(max_len, d_model))
+        self.ortho_lambda = ortho_lambda
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: (B, T, C) -> (B, T, d_model)
+        per_ch = x.unsqueeze(-1) * self.W + self.channel_bias
+        emb = per_ch.sum(dim=2)
+        T = emb.shape[1]
+        emb = emb + self.pos[:T].unsqueeze(0)
+        return emb
+
+    def aux_loss(self) -> torch.Tensor:
+        gram = self.W @ self.W.T  # (C, C)
+        off = gram - torch.diag_embed(torch.diagonal(gram))
+        return self.ortho_lambda * (off ** 2).sum() / 2
+
+
 class ConcatEncoding(nn.Module):
     """Per-channel learned projection, concatenated; no carrier modulation.
 

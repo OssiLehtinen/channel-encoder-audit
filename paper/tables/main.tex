@@ -1,23 +1,22 @@
 \begin{table}[t]
 \centering
-\caption{Main predictive comparison at $C{=}4$. Mean $\pm$ std over 3 seeds.
-Random baselines: $\text{NLL}{=}\ln 32 \approx 3.466$, $\text{acc}{=}0.031$.
-\textsc{concat} isolates the contribution of block partitioning; \textsc{fdm}
-adds the sinusoidal carrier. Encoder parameters in parentheses; total model
-size is $\sim$152K either way.}
+\caption{Main predictive comparison at $C{=}4$, $d_{\text{model}}{=}64$.
+100 epochs with cosine decay, mean $\pm$ std over 5 seeds; metric is the
+best val NLL achieved during training (effective early stopping). Random
+baseline: $\text{NLL}{=}\ln 32 \approx 3.466$, $\text{acc}{=}0.031$. All
+models share the same 3-layer backbone at $\sim$152K params; encoder rows
+are ordered by best val NLL (lower is better).}
 \label{tab:main}
-\begin{tabular}{lccc}
+\begin{tabular}{lcccc}
 \toprule
-Encoder & Encoder params & Val NLL $\downarrow$ & Val acc $\uparrow$ \\
+Encoder & Class & Enc.\ params & Val NLL $\downarrow$ & Val acc $\uparrow$ \\
 \midrule
-\textsc{sum} (baseline)         & 320 & $3.280 \pm 0.009$           & $0.088 \pm 0.002$ \\
-\textsc{concat} (block, no carrier) & 128 & $3.125 \pm 0.018$       & $0.116 \pm 0.007$ \\
-\textbf{\textsc{fdm}} (block + carrier) & 0 & $\mathbf{3.061 \pm 0.014}$ & $\mathbf{0.123 \pm 0.001}$ \\
-\midrule
-\multicolumn{2}{l}{$\Delta$NLL from \textsc{sum} $\to$ \textsc{concat}}
-                                & $-0.155$ ($71\%$ of gain)    & $+0.028$ ($80\%$ of gain) \\
-\multicolumn{2}{l}{$\Delta$NLL from \textsc{concat} $\to$ \textsc{fdm}}
-                                & $-0.064$ ($29\%$ of gain)    & $+0.007$ ($20\%$ of gain) \\
+\textsc{sum} (baseline)                 & summation  & 320   & $3.253 \pm 0.007$ & $0.092 \pm 0.003$ \\
+\textsc{cat} (channel-as-token)         & arch.      & 320   & $3.088 \pm 0.040$ & $0.122 \pm 0.008$ \\
+\textsc{ci} (channel-independent)       & arch.      & 2{,}112 & $3.051 \pm 0.008$ & $0.140 \pm 0.003$ \\
+\textsc{fdm} (block + carrier)          & block      & 0     & $2.854 \pm 0.018$ & $0.145 \pm 0.004$ \\
+\textbf{\textsc{concat}} (block, no carrier) & block & 128   & $\mathbf{2.429 \pm 0.038}$ & $\mathbf{0.201 \pm 0.007}$ \\
+\textbf{\textsc{sum-ortho}} ($\lambda{=}10^{-2}$) & sum + reg & 512 & $\mathbf{2.422 \pm 0.021}$ & $\mathbf{0.202 \pm 0.004}$ \\
 \bottomrule
 \end{tabular}
 \end{table}

@@ -1,31 +1,35 @@
 \begin{table}[t]
 \centering
-\caption{Scaling with $d_{\text{model}}$ at $C{=}4$. Mean $\pm$ std over 3
-seeds; $d_{\text{ff}}{=}4\,d_{\text{model}}$; heads$=$4 (so $d_{\text{head}}$
-grows). \textsc{sum} is parameter-insensitive: 15$\times$ more parameters
-barely moves it. \textsc{concat} scales strongly. \textsc{fdm} improves but
-less than \textsc{concat}---at $d_{\text{block}}\ge 32$ the fixed carriers
-become a constraint rather than a useful bias. The \textsc{fdm} vs.\
-\textsc{concat} ranking \emph{flips} between $d_{\text{model}}{=}64$ and $128$.}
+\caption{Scaling with $d_{\text{model}}$ at $C{=}4$. $d_{\text{ff}}{=}4\,d_{\text{model}}$,
+heads$=$4 (so $d_{\text{head}}$ grows). Mean $\pm$ std over 5 seeds, 100 epochs
+with cosine decay.
+\textsc{sum} shows its structural ceiling: 15$\times$ more parameters
+barely move it. \textsc{concat} scales strongly but begins to overfit at
+$d_{\text{model}}{=}256$. \textsc{fdm} plateaus and overfits earlier
+because amplitude-modulating a fixed template is a constrained
+representation that large blocks cannot fully exploit.}
 \label{tab:dmodel}
 \begin{tabular}{llccc}
 \toprule
 $d_{\text{model}}$ & encoder & total params & val NLL $\downarrow$ & val acc $\uparrow$ \\
 \midrule
-\multirow{3}{*}{64}
-    & \textsc{sum}    & $152{,}480$  & $3.280 \pm 0.007$ & $0.088 \pm 0.002$ \\
-    & \textsc{concat} & $152{,}288$  & $3.125 \pm 0.014$ & $0.116 \pm 0.005$ \\
-    & \textbf{\textsc{fdm}} & $152{,}160$ & $\mathbf{3.061 \pm 0.011}$ & $\mathbf{0.123 \pm 0.000}$ \\
+\multirow{4}{*}{64}
+    & \textsc{sum}       & $152{,}480$ & $3.253 \pm 0.007$ & $0.092 \pm 0.003$ \\
+    & \textsc{fdm}       & $152{,}160$ & $2.854 \pm 0.018$ & $0.145 \pm 0.004$ \\
+    & \textsc{fdm-learn} & $152{,}164$ & $2.856 \pm 0.018$ & $0.145 \pm 0.005$ \\
+    & \textbf{\textsc{concat}} & $152{,}288$ & $\mathbf{2.429 \pm 0.038}$ & $\mathbf{0.201 \pm 0.007}$ \\
 \midrule
-\multirow{3}{*}{128}
-    & \textsc{sum}    & $599{,}840$  & $3.265 \pm 0.010$ & $0.091 \pm 0.001$ \\
-    & \textbf{\textsc{concat}} & $599{,}456$ & $\mathbf{2.797 \pm 0.019}$ & $\mathbf{0.155 \pm 0.005}$ \\
-    & \textsc{fdm}    & $599{,}200$  & $2.963 \pm 0.016$ & $0.135 \pm 0.001$ \\
+\multirow{4}{*}{128}
+    & \textsc{sum}       & $599{,}840$ & $3.251 \pm 0.008$ & $0.094 \pm 0.002$ \\
+    & \textsc{fdm}       & $599{,}200$ & $2.898 \pm 0.007$ & $0.146 \pm 0.003$ \\
+    & \textsc{fdm-learn} & $599{,}204$ & $2.899 \pm 0.007$ & $0.145 \pm 0.003$ \\
+    & \textbf{\textsc{concat}} & $599{,}456$ & $\mathbf{2.291 \pm 0.009}$ & $\mathbf{0.223 \pm 0.002}$ \\
 \midrule
-\multirow{3}{*}{256}
-    & \textsc{sum}    & $2{,}379{,}296$ & $3.265 \pm 0.010$ & $0.089 \pm 0.001$ \\
-    & \textbf{\textsc{concat}} & $2{,}378{,}528$ & $\mathbf{2.704 \pm 0.005}$ & $\mathbf{0.162 \pm 0.004}$ \\
-    & \textsc{fdm}    & $2{,}378{,}016$ & $2.913 \pm 0.018$ & $0.142 \pm 0.004$ \\
+\multirow{4}{*}{256}
+    & \textsc{sum}       & $2{,}379{,}296$ & $3.255 \pm 0.007$ & $0.091 \pm 0.001$ \\
+    & \textsc{fdm}       & $2{,}378{,}016$ & $2.930 \pm 0.015$ & $0.139 \pm 0.003$ \\
+    & \textsc{fdm-learn} & $2{,}378{,}020$ & $2.930 \pm 0.015$ & $0.140 \pm 0.003$ \\
+    & \textbf{\textsc{concat}} & $2{,}378{,}528$ & $\mathbf{2.322 \pm 0.014}$ & $\mathbf{0.221 \pm 0.003}$ \\
 \bottomrule
 \end{tabular}
 \end{table}

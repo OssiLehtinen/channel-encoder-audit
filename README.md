@@ -24,65 +24,68 @@ This repo contains:
 
 ## Headline results
 
-At C=4 channels, mean ± std over 3 seeds, same transformer backbone
-(≈152K params) for all three encoders:
+At C=4 channels, mean ± std over 5 seeds, 100 epochs with cosine LR decay,
+same transformer backbone (~152K params) for all encoders. Metric is the
+best val NLL achieved during training (effective early stopping).
 
 Val NLL = validation negative log-likelihood (cross-entropy of the
 categorical generative head); val acc = top-1 bin accuracy.
 
-| encoder                        | encoder params | val NLL ↓        | val acc ↑        |
-| ------------------------------ | -------------- | ---------------- | ---------------- |
-| `sum` (naive baseline)         | 320            | 3.280 ± 0.009    | 0.088 ± 0.002    |
-| `concat` (block, no carrier)   | 128            | 3.125 ± 0.018    | 0.116 ± 0.007    |
-| **`fdm` (block + carrier)**    | **0**          | **3.061 ± 0.014**| **0.123 ± 0.001**|
+| encoder                         | class         | enc. params | val NLL ↓        | val acc ↑        |
+| ------------------------------- | ------------- | ----------- | ---------------- | ---------------- |
+| `sum` (baseline)                | summation     | 320         | 3.253 ± 0.007    | 0.092 ± 0.003    |
+| `cat` (channel-as-token)        | arch.         | 320         | 3.088 ± 0.040    | 0.122 ± 0.008    |
+| `ci` (channel-independent)      | arch.         | 2,112       | 3.051 ± 0.008    | 0.140 ± 0.003    |
+| `fdm` (block + carrier)         | block         | 0           | 2.854 ± 0.018    | 0.145 ± 0.004    |
+| **`concat`** (block, no carrier) | block        | 128         | **2.429 ± 0.038**| **0.201 ± 0.007**|
+| **`sum-ortho`** (λ=1e-2)        | sum + reg     | 512         | **2.422 ± 0.021**| **0.202 ± 0.004**|
 
 Random baseline: NLL = ln 32 ≈ 3.466, acc = 1/32 ≈ 0.031.
 
 Linear-probe channel recovery (R² from a frozen hidden state back to the
-raw input, per channel):
+raw input, mean over channels):
 
-| encoder  | input layer | after 3 layers |
-| -------- | ----------- | -------------- |
-| `fdm`    | 1.00        | 0.96           |
-| `concat` | 0.997       | 0.93           |
-| `sum`    | 0.24        | 0.24           |
+| encoder     | input layer | after 3 layers |
+| ----------- | ----------- | -------------- |
+| `sum`       | 0.240       | 0.234          |
+| `fdm`       | 1.000       | 0.925          |
+| `concat`    | 0.999       | **0.937**      |
+| `sum-ortho` | 1.000       | 0.926          |
 
-Block partitioning alone (`concat`) accounts for ~70–80% of the gain over
-`sum`; the carrier adds the remainder.
+Two cheap mechanisms tie for first: hard **block partitioning** (`concat`)
+and **soft orthogonality** (`sum-ortho`, a λ · Σ(W_i·W_j)² penalty on
+per-channel projections). `fdm`'s sinusoidal carrier is a faster-convergence
+inductive bias but a lower ceiling. `sum` never closes the gap — no amount
+of width helps it (15× more parameters moves NLL by <0.02).
 
 ### Scaling with model width
 
-At C=4 the story changes with `d_model`:
+At C=4, val NLL / val acc (mean over 5 seeds):
 
-| d_model | total params | sum          | concat        | fdm           |
-| ------- | ------------ | ------------ | ------------- | ------------- |
-| 64      | 152K         | 3.280 / 0.088 | 3.125 / 0.116 | **3.061 / 0.123** |
-| 128     | 600K         | 3.265 / 0.091 | **2.797 / 0.155** | 2.963 / 0.135 |
-| 256     | 2.38M        | 3.265 / 0.089 | **2.704 / 0.162** | 2.913 / 0.142 |
+| d_model | total params | sum           | fdm           | concat            |
+| ------- | ------------ | ------------- | ------------- | ----------------- |
+| 64      | 152K         | 3.253 / 0.092 | 2.854 / 0.145 | **2.429 / 0.201** |
+| 128     | 600K         | 3.251 / 0.094 | 2.898 / 0.146 | **2.291 / 0.223** |
+| 256     | 2.38M        | 3.255 / 0.091 | 2.930 / 0.139 | **2.322 / 0.221** |
 
-(val NLL / val acc; bold = best per row.)
+- **`sum` is structurally capped**: 15× more parameters barely move it; no
+  amount of width fixes rank-deficient encoding.
+- **`concat` scales strongly** and starts overfitting at d_model=256.
+- **`fdm` plateaus at d_block=16**, losing ground as width grows because the
+  fixed sinusoidal template has fewer degrees of freedom than a learned
+  per-block projection.
 
-Three takeaways:
-- **`sum` is structurally capped**: 15× more parameters barely move it;
-  no amount of width fixes rank-deficient encoding.
-- **`concat` scales strongly.** Block partitioning compounds with width.
-- **`fdm` vs `concat` ranking flips at d_model ≥ 128.** The fixed carrier is
-  a useful inductive bias at small `d_block` (=16) and a constraint at
-  large `d_block` (≥32), where a learned projection has enough room to
-  discover whatever temporal structure it needs.
-
-### Is the FDM gap at large d_model a frequency-choice issue?
+### Is the FDM gap a frequency-choice issue?
 
 Two controls at d_model=128:
 
-- **Learnable `ω_k`**: plumbs as a Parameter with gradients, but drifts
-  <1% over 12 epochs and changes metrics by <10⁻³. The optimizer can
-  barely move four scalar frequencies against the much stronger gradient
-  signal flowing into Q/K/V/FFN weights.
+- **Learnable `ω_k`**: the `fdm-learn` variant plumbs as a Parameter with
+  gradients but the ωs drift <1% under AdamW in 100 epochs. Metrics match
+  fixed-ω to <10⁻³.
 - **Grid search over 11 fixed (ω_min, ω_max) bands**: best NLL is
-  **2.933** for ω ∈ [0.03, 0.5] (matching signal bandwidth), beating the
-  default 2.963 by ~0.03 nats but still **0.14 nats behind concat
-  (2.797)**. The gap is structural, not a hyperparameter miss.
+  **2.809** for ω ∈ [0.03, 0.5] (matching signal bandwidth), beating the
+  default 2.900 by ~0.09 nats but still **0.52 nats behind `concat`
+  (2.291)**. The gap is structural, not a hyperparameter miss.
 
 ---
 
@@ -90,18 +93,23 @@ Two controls at d_model=128:
 
 ```bash
 uv sync
-# single-encoder comparison at C=4
-uv run python -m fft_encode.train --epochs 10
-# main sweep: 4 encoders × {4,8,16} channels × 3 seeds, plus masking
-uv run python -m fft_encode.experiments --seeds 3 --epochs 12 --out results.json
-# linear-probe channel recovery at C=4
-uv run python -m fft_encode.probe --epochs 12 --out probe_results.json
-# d_model scaling {64,128,256} including fdm-learn
-uv run python -m fft_encode.scale_dmodel --seeds 3 --epochs 12 --out scale_dmodel.json
-# carrier-band grid search at d_model=128
-uv run python -m fft_encode.carrier_grid --seeds 3 --epochs 12 --out carrier_grid.json
-# regenerate paper figures
+# run everything in one command (~1 hour on a single GPU):
+uv run python -m fft_encode.run_all --out results_full --epochs 100 --seeds 5 --seeds-grid 3
+# outputs: results_full/{main.json, dmodel.json, carrier.json, probe.json, summary.txt}
+# figures:
 uv run python -m fft_encode.plot
+# if a late stage fails, rebuild the summary from existing JSONs:
+uv run python -m fft_encode.rebuild_summary --dir results_full
+```
+
+Individual stage scripts are also available for debugging:
+
+```bash
+uv run python -m fft_encode.train --epochs 20           # single-encoder comparison
+uv run python -m fft_encode.experiments --epochs 100    # main sweep only
+uv run python -m fft_encode.scale_dmodel --epochs 100   # d_model sweep
+uv run python -m fft_encode.carrier_grid --epochs 100   # carrier band grid
+uv run python -m fft_encode.probe --epochs 100          # linear probes
 ```
 
 Requires Python 3.11+ and a CUDA GPU is recommended (full sweep runs in
@@ -170,24 +178,25 @@ band — the FDM gain is not a trivial resonance with the data.
 
 ```
 fft_encode/
-  data.py          synthetic multi-signal dataset
-  encodings.py     SumEncoding, ConcatEncoding, FDMChannelEncoding
-  model.py         causal transformer + categorical head
-  train.py         single-run trainer
-  experiments.py   main sweep (table 1 + C scaling + channel mask)
-  probe.py         linear-probe channel recovery
-  scale_dmodel.py  d_model scaling, incl. fdm-learn (learnable ω_k)
-  carrier_grid.py  grid search over (ω_min, ω_max) at d_model=128
-  plot.py          scaling figures for the paper
+  data.py             synthetic multi-signal dataset
+  encodings.py        Sum, SumOrtho, Concat, FDM channel encoders
+  baselines.py        channel-independent and channel-as-token models
+  model.py            causal transformer + categorical head
+  runner.py           shared training+tracing utility
+  train.py            single-run trainer (legacy)
+  experiments.py      main sweep (legacy)
+  probe.py            linear-probe channel recovery (legacy)
+  scale_dmodel.py     d_model scaling (legacy)
+  carrier_grid.py     carrier band grid search (legacy)
+  run_all.py          one-command reproducer (all stages with cosine LR)
+  rebuild_summary.py  regenerate summary.txt from saved JSONs
+  plot.py             paper figures
 paper/
   main.tex         manuscript
   tables/*.tex     generated tables
   figures/*.pdf    generated figures
   main.pdf         built manuscript
-results.json        main sweep output
-probe_results.json  probe output
-scale_dmodel.json   d_model sweep output
-carrier_grid.json   carrier grid search output
+results_full/      outputs from run_all.py (main, dmodel, carrier, probe, summary)
 ```
 
 ---

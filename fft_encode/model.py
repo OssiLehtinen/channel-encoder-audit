@@ -12,7 +12,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .encodings import ConcatEncoding, FDMChannelEncoding, SumEncoding  # noqa: F401
+from .encodings import (  # noqa: F401
+    ConcatEncoding,
+    FDMChannelEncoding,
+    SumEncoding,
+    SumOrthoEncoding,
+)
 
 
 class SignalTransformer(nn.Module):
@@ -57,6 +62,12 @@ class SignalTransformer(nn.Module):
         self.head = nn.Linear(d_model, n_bins)
         self.max_len = max_len
 
+    def aux_loss(self) -> torch.Tensor:
+        fn = getattr(self.encoder, "aux_loss", None)
+        if fn is None:
+            return torch.zeros((), device=next(self.parameters()).device)
+        return fn()
+
     def forward(
         self,
         x: torch.Tensor,
@@ -80,19 +91,45 @@ class SignalTransformer(nn.Module):
         return logits
 
 
-def build_model(kind: str, n_channels: int, d_model: int, n_bins: int, **kw) -> SignalTransformer:
-    if kind == "fdm":
-        enc = FDMChannelEncoding(n_channels=n_channels, d_model=d_model)
-    elif kind == "fdm-learn":
-        enc = FDMChannelEncoding(n_channels=n_channels, d_model=d_model,
-                                 learnable_omega=True)
-    elif kind == "sum":
-        enc = SumEncoding(n_channels=n_channels, d_model=d_model)
-    elif kind == "concat":
-        enc = ConcatEncoding(n_channels=n_channels, d_model=d_model)
-    else:
-        raise ValueError(kind)
-    return SignalTransformer(enc, d_model=d_model, n_bins=n_bins, **kw)
+def build_model(kind: str, n_channels: int, d_model: int, n_bins: int, **kw):
+    """Return a model whose forward(x: (B,T,C)) -> logits (B,T,K).
+
+    Encoder-only variants share SignalTransformer:
+      sum, concat, fdm, fdm-learn.
+    Architectural baselines return their own module:
+      ci (channel-independent, PatchTST-spirit)
+      cat (channel-as-token, iTransformer/Crossformer-spirit)
+    """
+    if kind in ("fdm", "fdm-learn", "sum", "concat"):
+        if kind == "fdm":
+            enc = FDMChannelEncoding(n_channels=n_channels, d_model=d_model)
+        elif kind == "fdm-learn":
+            enc = FDMChannelEncoding(n_channels=n_channels, d_model=d_model,
+                                     learnable_omega=True)
+        elif kind == "sum":
+            enc = SumEncoding(n_channels=n_channels, d_model=d_model)
+        elif kind == "concat":
+            enc = ConcatEncoding(n_channels=n_channels, d_model=d_model)
+        return SignalTransformer(enc, d_model=d_model, n_bins=n_bins, **kw)
+    if kind == "sum-ortho":
+        ortho_lambda = kw.pop("ortho_lambda", 1e-2)
+        enc = SumOrthoEncoding(n_channels=n_channels, d_model=d_model,
+                               ortho_lambda=ortho_lambda)
+        return SignalTransformer(enc, d_model=d_model, n_bins=n_bins, **kw)
+    if kind in ("ci", "cat"):
+        from .baselines import (
+            ChannelAsTokenTransformer,
+            ChannelIndependentTransformer,
+        )
+        cls = ChannelIndependentTransformer if kind == "ci" else ChannelAsTokenTransformer
+        # strip unused kwargs that SignalTransformer accepts (max_len kept)
+        return cls(
+            n_channels=n_channels, d_model=d_model, n_bins=n_bins,
+            n_heads=kw.get("n_heads", 4), n_layers=kw.get("n_layers", 3),
+            d_ff=kw.get("d_ff", 4 * d_model), dropout=kw.get("dropout", 0.1),
+            max_len=kw.get("max_len", 512),
+        )
+    raise ValueError(kind)
 
 
 def nll_loss(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:

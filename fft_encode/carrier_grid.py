@@ -65,15 +65,19 @@ def run_one(cfg: RunCfg, omega_min: float, omega_max: float, device):
 
     model = build_fdm_model(cfg, omega_min, omega_max).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=1e-4)
+    from .experiments import _make_scheduler
+    sched = _make_scheduler(opt, cfg)
     for _ in range(cfg.epochs):
         model.train()
         for x, y in train_loader:
             x, y = x.to(device), y.to(device)
-            loss = nll_loss(model(x), y)
+            loss = nll_loss(model(x), y) + model.aux_loss()
             opt.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             opt.step()
+        if sched is not None:
+            sched.step()
     model.eval()
     tot_loss, tot_correct, tot_n = 0.0, 0, 0
     with torch.no_grad():

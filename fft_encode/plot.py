@@ -13,30 +13,43 @@ import numpy as np
 
 
 def aggregate(runs):
-    """runs -> {(encoder, C): dict(val_nll=[...], val_acc=[...])}"""
+    """runs -> {(encoder, C): dict(val_nll=[...], val_acc=[...])}
+
+    Accepts runs from results.json (flat val_nll) or results_full/main.json
+    (best_val_nll inside run dicts). Uses best_val_nll when present.
+    """
     g = defaultdict(lambda: dict(val_nll=[], val_acc=[]))
     for r in runs:
+        if r.get("cfg", {}).get("encoder") == "cat" and r["cfg"]["C"] > 8:
+            continue  # skipped in sweep, guard here too
+        nll = r.get("best_val_nll", r.get("val_nll"))
+        acc = r.get("best_val_acc", r.get("val_acc"))
         key = (r["cfg"]["encoder"], r["cfg"]["C"])
-        g[key]["val_nll"].append(r["val_nll"])
-        g[key]["val_acc"].append(r["val_acc"])
+        g[key]["val_nll"].append(nll)
+        g[key]["val_acc"].append(acc)
     return g
 
 
 def plot_sweep(runs, x_field, xlabel, xticks_log2, out_path, random_nll, random_acc):
     g = defaultdict(lambda: dict(val_nll=[], val_acc=[]))
     for r in runs:
+        nll = r.get("best_val_nll", r.get("val_nll"))
+        acc = r.get("best_val_acc", r.get("val_acc"))
         key = (r["cfg"]["encoder"], r["cfg"][x_field])
-        g[key]["val_nll"].append(r["val_nll"])
-        g[key]["val_acc"].append(r["val_acc"])
+        g[key]["val_nll"].append(nll)
+        g[key]["val_acc"].append(acc)
     xs_all = sorted({k[1] for k in g})
-    encoders = ["sum", "concat", "fdm"]
-    if any(e.startswith("fdm-") for e in {k[0] for k in g}):
-        encoders = ["sum", "concat", "fdm", "fdm-learn"]
+    present = {k[0] for k in g}
+    order = ["sum", "sum-ortho", "concat", "fdm", "fdm-learn", "ci", "cat"]
+    encoders = [e for e in order if e in present]
     style = {
         "sum":       dict(color="#d1495b", marker="s", label="sum"),
+        "sum-ortho": dict(color="#b5179e", marker="P", label="sum-ortho (soft orthogonality)"),
         "concat":    dict(color="#edae49", marker="o", label="concat (block, no carrier)"),
         "fdm":       dict(color="#00798c", marker="^", label="fdm (block + fixed carrier)"),
         "fdm-learn": dict(color="#30638e", marker="D", label="fdm-learn (learnable $\\omega_k$)"),
+        "ci":        dict(color="#6a994e", marker="X", label="ci (channel-independent)"),
+        "cat":       dict(color="#5f0f40", marker="*", label="cat (channel-as-token)"),
     }
     fig, axes = plt.subplots(1, 2, figsize=(9.0, 3.3), constrained_layout=True)
     for enc in encoders:
@@ -72,9 +85,9 @@ def plot_sweep(runs, x_field, xlabel, xticks_log2, out_path, random_nll, random_
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--results", default="results.json")
+    ap.add_argument("--results", default="results_full/main.json")
     ap.add_argument("--out", default="paper/figures/scaling.pdf")
-    ap.add_argument("--dmodel-results", default="scale_dmodel.json")
+    ap.add_argument("--dmodel-results", default="results_full/dmodel.json")
     ap.add_argument("--dmodel-out", default="paper/figures/dmodel_scaling.pdf")
     args = ap.parse_args()
 
@@ -82,11 +95,17 @@ def main():
         data = json.load(f)
     g = aggregate(data["runs"])
     Cs = sorted({k[1] for k in g})
-    encoders = ["sum", "concat", "fdm"]
+    present = {k[0] for k in g}
+    order = ["sum", "sum-ortho", "concat", "fdm", "fdm-learn", "ci", "cat"]
+    encoders = [e for e in order if e in present]
     style = {
-        "sum":    dict(color="#d1495b", marker="s", label="sum"),
-        "concat": dict(color="#edae49", marker="o", label="concat (block, no carrier)"),
-        "fdm":    dict(color="#00798c", marker="^", label="fdm (block + carrier)"),
+        "sum":       dict(color="#d1495b", marker="s", label="sum"),
+        "sum-ortho": dict(color="#b5179e", marker="P", label="sum-ortho"),
+        "concat":    dict(color="#edae49", marker="o", label="concat"),
+        "fdm":       dict(color="#00798c", marker="^", label="fdm"),
+        "fdm-learn": dict(color="#30638e", marker="D", label="fdm-learn"),
+        "ci":        dict(color="#6a994e", marker="X", label="ci"),
+        "cat":       dict(color="#5f0f40", marker="*", label="cat"),
     }
 
     fig, axes = plt.subplots(1, 2, figsize=(9.0, 3.3), constrained_layout=True)

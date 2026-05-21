@@ -1,27 +1,26 @@
 \begin{table}[t]
 \centering
-\caption{Linear-probe channel recovery. We fit a closed-form ridge probe
-from a frozen hidden state to the raw input $x \in \mathbb{R}^4$ and report
-per-channel $R^2$ on a held-out split. Layer~0 is the input embedding;
-layer~3 is the final transformer block. Both block-partitioned encoders are
-linearly invertible at the input (\textsc{fdm} by construction, \textsc{concat}
-because each $W_k$ converges to a non-degenerate map), and recovery survives
-through three transformer layers. \textsc{sum} is fundamentally
-underdetermined and saturates at the same low ceiling at every depth.
-\textsc{fdm} preserves channel ch0 (used in two interaction terms) better
-than \textsc{concat} after attention, suggesting the carrier acts as a
-gentle inductive bias against intra-block channel mixing.}
+\caption{Linear-probe channel recovery at $C{=}4$, seed 0, after 100 epochs
+of cosine-scheduled training. Closed-form ridge probe $\mathbf{h} \mapsto
+\hat{x}$ from a frozen hidden state to the raw input vector
+$x \in \mathbb{R}^4$, held-out per-channel $R^2$. Layer~0 is the input
+embedding; layer~3 is the final transformer block. \textsc{sum-ortho}
+matches block-partitioned encoders, confirming that the orthogonality
+regulariser drives learned per-channel projections to near-orthogonal
+subspaces.}
 \label{tab:probe}
 \begin{tabular}{llccccc}
 \toprule
 Encoder & Layer & $R^2_{\text{ch0}}$ & $R^2_{\text{ch1}}$ & $R^2_{\text{ch2}}$ & $R^2_{\text{ch3}}$ & mean \\
 \midrule
-\textsc{fdm}    & 0 (input) & $1.000$ & $1.000$ & $1.000$ & $1.000$ & $\mathbf{1.000}$ \\
-\textsc{fdm}    & 3 (final) & $0.969$ & $0.963$ & $0.954$ & $0.958$ & $\mathbf{0.961}$ \\
-\textsc{concat} & 0 (input) & $0.989$ & $1.000$ & $1.000$ & $1.000$ & $0.997$ \\
-\textsc{concat} & 3 (final) & $0.813$ & $0.974$ & $0.966$ & $0.973$ & $0.932$ \\
-\textsc{sum}    & 0 (input) & $0.255$ & $0.250$ & $0.242$ & $0.214$ & $0.240$ \\
-\textsc{sum}    & 3 (final) & $0.253$ & $0.242$ & $0.239$ & $0.211$ & $0.236$ \\
+\textsc{sum}       & 0 (input) & $0.255$ & $0.250$ & $0.242$ & $0.214$ & $0.240$ \\
+\textsc{sum}       & 3 (final) & $0.251$ & $0.243$ & $0.235$ & $0.206$ & $0.234$ \\
+\textsc{sum-ortho} & 0 (input) & $1.000$ & $1.000$ & $1.000$ & $1.000$ & $\mathbf{1.000}$ \\
+\textsc{sum-ortho} & 3 (final) & $0.963$ & $0.933$ & $0.934$ & $0.875$ & $\mathbf{0.926}$ \\
+\textsc{concat}    & 0 (input) & $0.995$ & $1.000$ & $1.000$ & $1.000$ & $0.999$ \\
+\textsc{concat}    & 3 (final) & $0.948$ & $0.950$ & $0.943$ & $0.906$ & $\mathbf{0.937}$ \\
+\textsc{fdm}       & 0 (input) & $1.000$ & $1.000$ & $1.000$ & $1.000$ & $1.000$ \\
+\textsc{fdm}       & 3 (final) & $0.927$ & $0.941$ & $0.951$ & $0.882$ & $0.925$ \\
 \bottomrule
 \end{tabular}
 \end{table}

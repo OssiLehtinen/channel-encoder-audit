@@ -22,6 +22,17 @@ from .data import MultiSignalDataset
 from .model import build_model, nll_loss
 
 
+def _make_scheduler(opt, cfg):
+    """Return an LR scheduler that steps once per epoch, or None for constant LR."""
+    if cfg.lr_schedule == "cosine":
+        return torch.optim.lr_scheduler.CosineAnnealingLR(
+            opt, T_max=cfg.epochs, eta_min=cfg.lr * cfg.lr_min_frac,
+        )
+    if cfg.lr_schedule == "constant":
+        return None
+    raise ValueError(f"unknown lr_schedule: {cfg.lr_schedule}")
+
+
 @dataclass
 class RunCfg:
     encoder: str
@@ -38,6 +49,8 @@ class RunCfg:
     dropout: float = 0.1
     lr: float = 3e-4
     batch_size: int = 32
+    lr_schedule: str = "cosine"   # {"cosine", "constant"}
+    lr_min_frac: float = 0.01      # cosine floor as fraction of lr
 
 
 def make_loaders(cfg: RunCfg):
@@ -90,16 +103,19 @@ def train_run(cfg: RunCfg, device, return_model: bool = False):
     ).to(device)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=1e-4)
+    sched = _make_scheduler(opt, cfg)
     t0 = time.time()
     for epoch in range(cfg.epochs):
         model.train()
         for x, y in train_loader:
             x, y = x.to(device), y.to(device)
-            loss = nll_loss(model(x), y)
+            loss = nll_loss(model(x), y) + model.aux_loss()
             opt.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             opt.step()
+        if sched is not None:
+            sched.step()
     val_nll, val_acc = evaluate(model, val_loader, device)
     elapsed = time.time() - t0
     out = dict(
