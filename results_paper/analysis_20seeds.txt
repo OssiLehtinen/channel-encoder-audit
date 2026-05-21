@@ -1,0 +1,214 @@
+==============================================================================
+PAIRED COMPARISONS
+==============================================================================
+Positive Δ = encoder A wins. Bootstrap p is one-sided (prob. of bootstrap mean having opposite sign).
+
+--- linear-ppe vs linear at C=4 (stage=main) ---
+    n=20, 19/20 paired diffs favour A, mean Δ = +0.0413 (std 0.0280)
+    NLL  A: 2.1139±0.0291, B: 2.1553±0.0190
+    paired t-test: t=6.600, p=2.573e-06, 95% CI [+0.0282, +0.0544]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0413, 95% CI [+0.0293, +0.0534], p_one-sided=0
+    bootstrap (cluster: per-example within seed, 15 seeds × ~51 ex): mean Δ=+0.0371, 95% CI [+0.0233, +0.0511], p_one-sided=0
+
+--- linear-ppe vs linear at C=8 (stage=main) ---
+    n=20, 16/20 paired diffs favour A, mean Δ = +0.0263 (std 0.0272)
+    NLL  A: 2.1496±0.0297, B: 2.1759±0.0218
+    paired t-test: t=4.320, p=0.0003695, 95% CI [+0.0136, +0.0391]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0263, 95% CI [+0.0144, +0.0378], p_one-sided=0
+    bootstrap (cluster: per-example within seed, 15 seeds × ~51 ex): mean Δ=+0.0228, 95% CI [+0.0100, +0.0353], p_one-sided=0.0003
+
+--- linear-ppe vs linear at C=16 (stage=main) ---
+    n=20, 14/20 paired diffs favour A, mean Δ = +0.0155 (std 0.0308)
+    NLL  A: 2.2516±0.0376, B: 2.2671±0.0319
+    paired t-test: t=2.252, p=0.03633, 95% CI [+0.0011, +0.0299]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0155, 95% CI [+0.0021, +0.0282], p_one-sided=0.0136
+    bootstrap (cluster: per-example within seed, 15 seeds × ~51 ex): mean Δ=+0.0180, 95% CI [+0.0028, +0.0321], p_one-sided=0.0117
+
+--- mlp vs linear at C=16 (stage=main) ---
+    n=20, 18/20 paired diffs favour A, mean Δ = +0.0357 (std 0.0351)
+    NLL  A: 2.2314±0.0319, B: 2.2671±0.0319
+    paired t-test: t=4.548, p=0.00022, 95% CI [+0.0192, +0.0521]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0357, 95% CI [+0.0209, +0.0507], p_one-sided=0
+    bootstrap (cluster: per-example within seed, 15 seeds × ~51 ex): mean Δ=+0.0248, 95% CI [+0.0102, +0.0408], p_one-sided=0.0001
+
+--- mlp vs concat at C=16 (stage=main) ---
+    n=20, 20/20 paired diffs favour A, mean Δ = +0.1082 (std 0.0322)
+    NLL  A: 2.2314±0.0319, B: 2.3396±0.0327
+    paired t-test: t=15.023, p=5.356e-12, 95% CI [+0.0931, +0.1233]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.1082, 95% CI [+0.0948, +0.1222], p_one-sided=0
+    bootstrap (cluster: per-example within seed, 15 seeds × ~51 ex): mean Δ=+0.1056, 95% CI [+0.0891, +0.1233], p_one-sided=0
+
+--- mlp vs sum-ortho at C=16 (stage=main) ---
+    n=20, 17/20 paired diffs favour A, mean Δ = +0.0357 (std 0.0392)
+    NLL  A: 2.2314±0.0319, B: 2.2671±0.0379
+    paired t-test: t=4.072, p=0.0006504, 95% CI [+0.0174, +0.0541]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0357, 95% CI [+0.0194, +0.0527], p_one-sided=0
+    bootstrap (cluster: per-example within seed, 15 seeds × ~51 ex): mean Δ=+0.0222, 95% CI [+0.0079, +0.0383], p_one-sided=0.0006
+
+--- mlp vs linear-ppe at C=16 (stage=main) ---
+    n=20, 12/20 paired diffs favour A, mean Δ = +0.0202 (std 0.0437)
+    NLL  A: 2.2314±0.0319, B: 2.2516±0.0376
+    paired t-test: t=2.065, p=0.05281, 95% CI [-0.0003, +0.0406]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0202, 95% CI [+0.0020, +0.0390], p_one-sided=0.0148
+    bootstrap (cluster: per-example within seed, 15 seeds × ~51 ex): mean Δ=+0.0068, 95% CI [-0.0117, +0.0272], p_one-sided=0.2561
+
+--- cat vs linear on ETTh1 (stage=etth1) ---
+    n=20, 13/20 paired diffs favour A, mean Δ = +0.0095 (std 0.0276)
+    NLL  A: 0.5512±0.0191, B: 0.5607±0.0165
+    paired t-test: t=1.547, p=0.1385, 95% CI [-0.0034, +0.0225]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0095, 95% CI [-0.0023, +0.0212], p_one-sided=0.0564
+    bootstrap (cluster: per-example within seed, 15 seeds × ~307 ex): mean Δ=+0.0041, 95% CI [-0.0095, +0.0172], p_one-sided=0.2647
+
+--- cat vs concat on ETTh1 (stage=etth1) ---
+    n=20, 16/20 paired diffs favour A, mean Δ = +0.0200 (std 0.0247)
+    NLL  A: 0.5512±0.0191, B: 0.5711±0.0188
+    paired t-test: t=3.626, p=0.001798, 95% CI [+0.0085, +0.0315]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0200, 95% CI [+0.0093, +0.0300], p_one-sided=0.0001
+    bootstrap (cluster: per-example within seed, 15 seeds × ~307 ex): mean Δ=+0.0201, 95% CI [+0.0062, +0.0328], p_one-sided=0.0017
+
+--- cat vs sum-ortho on ETTh1 (stage=etth1) ---
+    n=20, 13/20 paired diffs favour A, mean Δ = +0.0101 (std 0.0261)
+    NLL  A: 0.5512±0.0191, B: 0.5613±0.0168
+    paired t-test: t=1.732, p=0.09947, 95% CI [-0.0021, +0.0223]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0101, 95% CI [-0.0008, +0.0210], p_one-sided=0.035
+    bootstrap (cluster: per-example within seed, 15 seeds × ~307 ex): mean Δ=+0.0032, 95% CI [-0.0084, +0.0139], p_one-sided=0.2841
+
+--- cat vs mlp on ETTh1 (stage=etth1) ---
+    n=20, 20/20 paired diffs favour A, mean Δ = +0.0342 (std 0.0189)
+    NLL  A: 0.5512±0.0191, B: 0.5854±0.0201
+    paired t-test: t=8.112, p=1.363e-07, 95% CI [+0.0254, +0.0430]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0342, 95% CI [+0.0266, +0.0425], p_one-sided=0
+    bootstrap (cluster: per-example within seed, 15 seeds × ~307 ex): mean Δ=+0.0335, 95% CI [+0.0241, +0.0442], p_one-sided=0
+
+--- cat vs linear-ppe on ETTh1 (stage=etth1) ---
+    n=20, 17/20 paired diffs favour A, mean Δ = +0.0214 (std 0.0216)
+    NLL  A: 0.5512±0.0191, B: 0.5725±0.0140
+    paired t-test: t=4.414, p=0.0002978, 95% CI [+0.0112, +0.0315]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0214, 95% CI [+0.0123, +0.0307], p_one-sided=0
+    bootstrap (cluster: per-example within seed, 15 seeds × ~307 ex): mean Δ=+0.0188, 95% CI [+0.0074, +0.0310], p_one-sided=0.0001
+
+--- linear-ppe vs linear at d=64 (stage=dmodel) ---
+    n=20, 19/20 paired diffs favour A, mean Δ = +0.0402 (std 0.0276)
+    NLL  A: 2.1148±0.0290, B: 2.1550±0.0185
+    paired t-test: t=6.518, p=3.039e-06, 95% CI [+0.0273, +0.0532]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0402, 95% CI [+0.0286, +0.0521], p_one-sided=0
+    bootstrap (cluster: per-example within seed, 15 seeds × ~51 ex): mean Δ=+0.0371, 95% CI [+0.0236, +0.0510], p_one-sided=0
+
+--- linear-ppe vs linear at d=128 (stage=dmodel) ---
+    n=20, 18/20 paired diffs favour A, mean Δ = +0.0491 (std 0.0504)
+    NLL  A: 2.1846±0.0323, B: 2.2336±0.0320
+    paired t-test: t=4.351, p=0.0003444, 95% CI [+0.0255, +0.0727]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0491, 95% CI [+0.0271, +0.0699], p_one-sided=0
+    bootstrap (cluster: per-example within seed, 15 seeds × ~51 ex): mean Δ=+0.0617, 95% CI [+0.0363, +0.0837], p_one-sided=0
+
+--- linear-ppe vs linear at d=256 (stage=dmodel) ---
+    n=20, 19/20 paired diffs favour A, mean Δ = +0.0563 (std 0.0285)
+    NLL  A: 2.2653±0.0262, B: 2.3216±0.0333
+    paired t-test: t=8.822, p=3.807e-08, 95% CI [+0.0429, +0.0696]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0563, 95% CI [+0.0439, +0.0683], p_one-sided=0
+    bootstrap (cluster: per-example within seed, 15 seeds × ~51 ex): mean Δ=+0.0499, 95% CI [+0.0362, +0.0634], p_one-sided=0
+
+--- linear vs mlp at d=64 (mlp degrades) (stage=dmodel) ---
+    n=20, 18/20 paired diffs favour A, mean Δ = +0.0217 (std 0.0211)
+    NLL  A: 2.1550±0.0185, B: 2.1767±0.0233
+    paired t-test: t=4.587, p=0.0002011, 95% CI [+0.0118, +0.0315]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0217, 95% CI [+0.0119, +0.0298], p_one-sided=0
+    bootstrap (cluster: per-example within seed, 15 seeds × ~51 ex): mean Δ=+0.0287, 95% CI [+0.0233, +0.0339], p_one-sided=0
+
+--- linear vs mlp at d=128 (stage=dmodel) ---
+    n=20, 20/20 paired diffs favour A, mean Δ = +0.0674 (std 0.0298)
+    NLL  A: 2.2336±0.0320, B: 2.3010±0.0274
+    paired t-test: t=10.130, p=4.274e-09, 95% CI [+0.0535, +0.0813]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0674, 95% CI [+0.0548, +0.0802], p_one-sided=0
+    bootstrap (cluster: per-example within seed, 15 seeds × ~51 ex): mean Δ=+0.0601, 95% CI [+0.0478, +0.0727], p_one-sided=0
+
+--- linear vs mlp at d=256 (stage=dmodel) ---
+    n=20, 19/20 paired diffs favour A, mean Δ = +0.0852 (std 0.0382)
+    NLL  A: 2.3216±0.0333, B: 2.4067±0.0234
+    paired t-test: t=9.975, p=5.481e-09, 95% CI [+0.0673, +0.1030]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0852, 95% CI [+0.0685, +0.1007], p_one-sided=0
+    bootstrap (cluster: per-example within seed, 15 seeds × ~51 ex): mean Δ=+0.0965, 95% CI [+0.0809, +0.1118], p_one-sided=0
+
+--- mlp vs linear at C=16, N=5120 (stage=main_largen) ---
+    n=20, 18/20 paired diffs favour A, mean Δ = +0.0114 (std 0.0118)
+    NLL  A: 1.8312±0.0093, B: 1.8426±0.0152
+    paired t-test: t=4.288, p=0.0003971, 95% CI [+0.0058, +0.0169]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0114, 95% CI [+0.0069, +0.0169], p_one-sided=0
+    bootstrap (cluster: per-example within seed, 15 seeds × ~512 ex): mean Δ=+0.0106, 95% CI [+0.0049, +0.0174], p_one-sided=0
+
+--- mlp vs concat at C=16, N=5120 (stage=main_largen) ---
+    n=20, 20/20 paired diffs favour A, mean Δ = +0.0232 (std 0.0058)
+    NLL  A: 1.8312±0.0093, B: 1.8544±0.0110
+    paired t-test: t=17.932, p=2.294e-13, 95% CI [+0.0205, +0.0259]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0232, 95% CI [+0.0207, +0.0257], p_one-sided=0
+    bootstrap (cluster: per-example within seed, 15 seeds × ~512 ex): mean Δ=+0.0227, 95% CI [+0.0197, +0.0259], p_one-sided=0
+
+--- mlp vs sum-ortho at C=16, N=5120 (stage=main_largen) ---
+    n=20, 19/20 paired diffs favour A, mean Δ = +0.0132 (std 0.0151)
+    NLL  A: 1.8312±0.0093, B: 1.8444±0.0177
+    paired t-test: t=3.900, p=0.0009622, 95% CI [+0.0061, +0.0203]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0132, 95% CI [+0.0076, +0.0202], p_one-sided=0
+    bootstrap (cluster: per-example within seed, 15 seeds × ~512 ex): mean Δ=+0.0128, 95% CI [+0.0056, +0.0219], p_one-sided=0.0001
+
+--- mlp vs linear-ppe at C=16, N=5120 (stage=main_largen) ---
+    n=20, 18/20 paired diffs favour A, mean Δ = +0.0100 (std 0.0099)
+    NLL  A: 1.8312±0.0093, B: 1.8412±0.0127
+    paired t-test: t=4.513, p=0.0002381, 95% CI [+0.0054, +0.0147]
+    bootstrap (seed-level, n=20, B=10000): mean Δ=+0.0100, 95% CI [+0.0055, +0.0140], p_one-sided=0
+    bootstrap (cluster: per-example within seed, 15 seeds × ~512 ex): mean Δ=+0.0092, 95% CI [+0.0034, +0.0143], p_one-sided=0.0013
+
+--- linear vs linear-nobias at C=4 (stage=bias) ---
+    n=5, 5/5 paired diffs favour A, mean Δ = +0.0075 (std 0.0065)
+    NLL  A: 2.1693±0.0161, B: 2.1768±0.0141
+    paired t-test: t=2.576, p=0.06156, 95% CI [-0.0006, +0.0156]
+    bootstrap (seed-level, n=5, B=10000): mean Δ=+0.0075, 95% CI [+0.0037, +0.0134], p_one-sided=0
+    bootstrap (cluster): not available (no per-example data)
+
+==============================================================================
+GEOMETRY / POSPRO BOOTSTRAP CIs
+==============================================================================
+--- linear_C16 (n=20) ---
+    mean_off_abs_cos: mean=0.0815, 95% CI [+0.0790, +0.0841]
+    max_off_abs_cos: mean=0.3622, 95% CI [+0.3516, +0.3732]
+    driver_norm_mean: mean=1.2981, 95% CI [+1.2808, +1.3149]
+    distractor_norm_mean: mean=0.5852, 95% CI [+0.5739, +0.5962]
+    driver_over_distractor_ratio: mean=2.2221, 95% CI [+2.1758, +2.2700]
+    driver_variance_fraction: mean=0.6242, 95% CI [+0.6147, +0.6337]
+    distractor_variance_fraction: mean=0.3758, 95% CI [+0.3665, +0.3855]
+
+--- linear_C4 (n=20) ---
+    mean_off_abs_cos: mean=0.0417, 95% CI [+0.0374, +0.0462]
+    max_off_abs_cos: mean=0.0952, 95% CI [+0.0817, +0.1092]
+    driver_norm_mean: mean=1.1997, 95% CI [+1.1830, +1.2159]
+
+--- linear_C8 (n=20) ---
+    mean_off_abs_cos: mean=0.0562, 95% CI [+0.0518, +0.0606]
+    max_off_abs_cos: mean=0.2324, 95% CI [+0.2056, +0.2600]
+    driver_norm_mean: mean=1.2216, 95% CI [+1.2004, +1.2426]
+    distractor_norm_mean: mean=0.5402, 95% CI [+0.5271, +0.5532]
+    driver_over_distractor_ratio: mean=2.2669, 95% CI [+2.2107, +2.3214]
+    driver_variance_fraction: mean=0.8378, 95% CI [+0.8305, +0.8444]
+    distractor_variance_fraction: mean=0.1622, 95% CI [+0.1555, +0.1695]
+
+--- pospro_linear_C4 (n=20) ---
+    P_entropy_rank: mean=7.5864, 95% CI [+7.5864, +7.5864]
+    P_rank_99: mean=22.0000, 95% CI [+22.0000, +22.0000]
+    frac_P_energy_in_span_W: mean=0.0339, 95% CI [+0.0291, +0.0392]
+
+--- pospro_linear_ppe_C4 (n=20) ---
+    P_entropy_rank: mean=9.5495, 95% CI [+9.1652, +9.9690]
+    P_rank_99: mean=19.5500, 95% CI [+19.3500, +19.7500]
+    frac_P_energy_in_span_W: mean=0.0054, 95% CI [+0.0046, +0.0061]
+
+--- pospro_paired_diff (n=20) ---
+    frac_in_W_diff.mean: -0.0286
+    frac_in_W_diff.paired_t: mean=0.0286, 95% CI [+0.0230, +0.0341]
+    frac_in_W_diff.bootstrap: mean=0.0286, 95% CI [+0.0237, +0.0341]
+    eff_rank_diff.mean: 1.9631
+    eff_rank_diff.paired_t: mean=1.9631, 95% CI [+1.5208, +2.4055]
+    eff_rank_diff.bootstrap: mean=1.9631, 95% CI [+1.5686, +2.3736]
+
+--- sum_ortho_C4 (n=20) ---
+    mean_off_abs_cos: mean=0.0096, 95% CI [+0.0083, +0.0110]
+    max_off_abs_cos: mean=0.0220, 95% CI [+0.0185, +0.0256]
+
