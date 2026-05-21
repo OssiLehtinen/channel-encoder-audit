@@ -46,8 +46,12 @@ positional encoding through a learned linear layer
 $p{=}0.009$, 5/5 paired differences positive); the gap shrinks with
 channel count and is absent by $C{=}16$. At $C{=}16$ a two-layer
 MLP encoder pulls ahead of the linear family by ${\sim}0.06$--$0.12$
-NLL (paired $p \in \{0.0003, 0.008\}$ depending on comparator, 5/5
-favouring \textsc{mlp} in each case). The underlying mechanism for
+NLL at the main-sweep training-data size ($N_{\text{series}}{=}512$,
+paired $p \in \{0.0003, 0.008\}$, 5/5 favouring \textsc{mlp}); the
+lead survives $10\times$ data ($N{=}5120$, 5/5, $p \in \{0.0003,
+0.018\}$) but shrinks roughly five-fold to ${\sim}0.014$--$0.025$
+NLL, indicating that the data-limited regime amplifies the inter-encoder
+gaps without inverting them. The underlying mechanism for
 \textsc{linear-ppe} is not measured directly, and the $C$-dependence
 is in fact inconsistent with the naive form of either reading
 (orthogonalisation, compression), since both would predict the gap
@@ -532,6 +536,49 @@ $C{=}4$, the picture is that the top tier is narrow but its leader is
 \textsc{linear-ppe}, the large-$C$ winner is \textsc{mlp}, and at
 $C{=}8$ the linear family is tightest.
 
+\paragraph{The C=16 ranking persists, but shrinks, with $10\times$
+training data.}
+The $\Delta$NLL ${\sim}0.07$ between \textsc{mlp} and \textsc{linear}
+at $C{=}16, N_{\text{series}}{=}512$ raises an obvious question: is
+the nonlinear stem genuinely useful, or is the main sweep
+data-limited and \textsc{mlp} just happens to extract more from
+sparse data? We test this directly with the \texttt{main\_largen}
+stage of our reproducer: the same top-tier encoders at $C{=}16$
+trained with $N_{\text{series}}{=}5120$ ($10\times$ the main-sweep
+data), 5 seeds, otherwise identical.
+
+\begin{table}[h]
+\centering
+\caption{C=16 top-tier encoders, $N_{\text{series}}{=}5120$ vs.\
+$N_{\text{series}}{=}512$ (5 seeds each, 300 epochs).}
+\label{tab:main-largen}
+\begin{tabular}{lccc}
+\toprule
+encoder & $N{=}512$ val NLL & $N{=}5120$ val NLL & $\Delta$ from data \\
+\midrule
+\textsc{mlp}        & $2.221 \pm 0.023$ & $\mathbf{1.834 \pm 0.008}$ & $-0.387$ \\
+\textsc{linear-ppe} & $2.281 \pm 0.037$ & $1.847 \pm 0.014$         & $-0.434$ \\
+\textsc{linear}     & $2.289 \pm 0.029$ & $1.848 \pm 0.015$         & $-0.441$ \\
+\textsc{sum-ortho}  & $2.297 \pm 0.038$ & $1.849 \pm 0.015$         & $-0.448$ \\
+\textsc{concat}     & $2.337 \pm 0.038$ & $1.859 \pm 0.012$         & $-0.478$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two things happen at once. (i)~\textsc{mlp}'s lead survives in the
+data-rich regime: $5/5$ paired-seed differences still favour
+\textsc{mlp} over each of \textsc{linear} (paired $p{=}0.017$),
+\textsc{sum-ortho} ($p{=}0.018$), \textsc{linear-ppe} ($p{=}0.007$),
+and \textsc{concat} ($p{=}0.0003$). The C=16 mlp finding is not a
+data-limited artefact. (ii)~The magnitude shrinks roughly five-fold:
+$\Delta$NLL(mlp$-$linear) goes from $0.068$ at $N{=}512$ to $0.014$
+at $N{=}5120$; the linear family at $N{=}5120$ falls inside a band
+of width $0.012$ NLL versus $0.056$ at $N{=}512$. Each encoder also
+gains roughly $0.4$ NLL from the extra data, confirming the
+$N{=}512$ sweep is data-limited at $C{=}16$ just as at $C{=}4$
+(Section~\ref{sec:results-space}). The encoder ordering at $C{=}16$
+is robust to data scale; the absolute size of the gaps is not.
+
 \subsection{Model-width scaling}
 \label{sec:results-dmodel}
 
@@ -926,11 +973,16 @@ paired-seed differences favouring \textsc{mlp} and paired
 $p$-values from $0.0003$ to $0.008$. A plausible reading: with four
 drivers and many more distractors, the nonlinearity buys the encoder
 a useful gating on the channel vector that a linear projection cannot
-match. We do not pin down the mechanism here, but the pattern is
-clean enough to read as more than seed noise. The recommendation in
-the Conclusion still favours \textsc{linear} as the default---the
-gap is small and the architecture cost real---but a one-line caveat
-is warranted for the high-$C$ regime.
+match. At $10\times$ training data (Section~\ref{sec:results-scaling},
+Table~\ref{tab:main-largen}) \textsc{mlp}'s lead persists ($5/5$
+paired diffs, $p \in \{0.0003, 0.018\}$) but shrinks ${\sim}5\times$
+to ${\sim}0.014$--$0.025$ NLL, indicating that the $N{=}512$ gap is
+partly amplified by the data-limited regime. We do not pin down the
+mechanism here, but the pattern is clean enough to read as more than
+seed noise. The recommendation in the Conclusion still favours
+\textsc{linear} as the default---the gap is small, shrinks further
+with more data, and the architecture cost is real---but a one-line
+caveat is warranted for the high-$C$ regime.
 
 \paragraph{Importance weighting is automatic.}
 At $C{=}8$, driver channels get ${\sim}2.2{\times}$ larger
@@ -1054,6 +1106,15 @@ need a probe-based analog.
       ETTh1 at $d_{\text{model}}{=}56$, $C{=}7$. The $d_{\text{model}}$
       sweep covers only \textsc{sum} and \textsc{concat}. At larger
       scales the overfitting dynamics may change.
+\item The main sweep at $N_{\text{series}}{=}512$ is data-limited.
+      $10\times$ training data improves all top-tier encoders by
+      ${\sim}0.4$ NLL at $C{=}16$ (Table~\ref{tab:main-largen}); a
+      similar gap exists at $C{=}4$ ($2.17 \to 1.85$, see
+      Section~\ref{sec:results-space}). The relative ordering of
+      encoders is robust to data scale, but absolute inter-encoder
+      gaps shrink ${\sim}5\times$ at $10\times$ data. Readers should
+      treat the $N{=}512$ inter-encoder gaps as upper bounds on the
+      data-rich-regime gaps.
 \item \textsc{cat} is skipped at $C{=}16$ on the synthetic benchmark
       for compute reasons ($\mathcal{O}((CT)^2)$ attention).
 \item \textsc{linear-ppe} was tested at $C \in \{4, 8, 16\}$ on the
@@ -1101,13 +1162,16 @@ improve on the bare linear layer within seed noise. Three variants deserve a foo
 advantage at $C{=}4$ (paired $p{=}0.009$) that collapses with channel
 count and is absent by $C{=}16$. \textsc{mlp} pulls ahead of the
 linear family at $C{=}16$ under paired analysis (paired
-$p{=}0.0003$--$0.008$, 5/5 paired diffs favouring \textsc{mlp}),
-suggesting a nonlinearity becomes useful when the channel-input
-space is large. And channel-as-token (\textsc{cat}) posts the lowest
-mean NLL on ETTh1, separating cleanly from \textsc{mlp} and
-\textsc{linear-ppe} under paired tests but only marginally from
-\textsc{linear}, \textsc{sum-ortho}, and \textsc{concat}---a
-domain-dependent narrowing of the synthetic gap, not a robust win. The practical
+$p{=}0.0003$--$0.008$ at the main-sweep $N{=}512$; gap shrinks
+${\sim}5\times$ at $10\times$ training data but stays statistically
+clear, $p \in \{0.0003, 0.018\}$), suggesting a nonlinearity becomes
+useful when the channel-input space is large but that the gap is
+partly amplified by the data-limited regime. And channel-as-token
+(\textsc{cat}) posts the lowest mean NLL on ETTh1, separating cleanly
+from \textsc{mlp} and \textsc{linear-ppe} under paired tests but only
+marginally from \textsc{linear}, \textsc{sum-ortho}, and
+\textsc{concat}---a domain-dependent narrowing of the synthetic gap,
+not a robust win. The practical
 recommendation is simple: use \texttt{nn.Linear(C, $d_{\text{model}}$)}
 for the channel encoding, and spend the complexity budget elsewhere
 unless your channels are dense, informative measurements of a single
