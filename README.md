@@ -24,6 +24,9 @@ This repo contains:
 At C=4 channels, mean ± std over 3 seeds, same transformer backbone
 (≈152K params) for all three encoders:
 
+Val NLL = validation negative log-likelihood (cross-entropy of the
+categorical generative head); val acc = top-1 bin accuracy.
+
 | encoder                        | encoder params | val NLL ↓        | val acc ↑        |
 | ------------------------------ | -------------- | ---------------- | ---------------- |
 | `sum` (naive baseline)         | 320            | 3.280 ± 0.009    | 0.088 ± 0.002    |
