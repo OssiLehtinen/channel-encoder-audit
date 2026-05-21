@@ -65,6 +65,10 @@ def train_and_trace(
     import time
     t0 = time.time()
     trace = Trace(epochs=[], val_nll=[], val_acc=[], train_nll=[])
+    # Per-checkpoint per-example NLLs, parallel to trace.epochs. Not saved
+    # to the trace (kept local); we extract only the best-epoch entry
+    # into the run dict.
+    per_example_at_checkpoint: list = []
     for ep in range(cfg.epochs):
         model.train()
         running, n = 0.0, 0
@@ -81,11 +85,13 @@ def train_and_trace(
             sched.step()
         epoch_train_nll = running / max(n, 1)
         if (ep + 1) % log_every == 0 or ep == 0 or ep == cfg.epochs - 1:
-            vnll, vacc = evaluate(model, val_loader, device)
+            vnll, vacc, per_ex = evaluate(
+                model, val_loader, device, return_per_example=True)
             trace.epochs.append(ep + 1)
             trace.val_nll.append(vnll)
             trace.val_acc.append(vacc)
             trace.train_nll.append(epoch_train_nll)
+            per_example_at_checkpoint.append(per_ex)
     elapsed = time.time() - t0
 
     vnll = np.array(trace.val_nll)
@@ -96,6 +102,8 @@ def train_and_trace(
     final_nll = float(vnll[-1])
     final_acc = float(vacc[-1])
     best_acc = float(vacc[best_idx])
+    best_per_example_nll = per_example_at_checkpoint[best_idx]
+    final_per_example_nll = per_example_at_checkpoint[-1]
 
     # Flag convergence
     last_epoch = trace.epochs[-1]
@@ -120,6 +128,12 @@ def train_and_trace(
         best_val_acc=best_acc,
         final_val_nll=final_nll, final_val_acc=final_acc,
         convergence_flag=flag,
+        # Per-sequence NLLs over the val split. Each list has one float
+        # per val series (their mean cross-entropy over positions). Use
+        # these for example-level bootstrap CIs alongside seed-level
+        # resampling.
+        best_per_example_nll=best_per_example_nll,
+        final_per_example_nll=final_per_example_nll,
     )
     if return_model:
         return out, model, val_loader

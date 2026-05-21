@@ -30,6 +30,14 @@ Stages (default: all)
                 span(W_k) and span(P), for linear vs linear-ppe.
                 Discriminates the compression vs orthogonalisation
                 mechanism question for linear-ppe.
+    extra_seeds  open-ended round-robin: for each new seed s starting
+                from --extra-seeds-start (default 5), runs one full
+                cycle of (main, etth1, main_largen, dmodel,
+                geom_largen) at seed s, then increments s. Loops
+                forever until interrupted. Writes per-(stage, seed)
+                JSON files to <out>/extra_seeds/ so any interruption
+                leaves a balanced set of additional seeds. Skips
+                seeds that are already complete on disk.
 
 Outputs
 -------
@@ -44,6 +52,8 @@ Outputs
     <out>/geom_largen.json
     <out>/main_largen.json
     <out>/pospro_geometry.json
+    <out>/extra_seeds/{main,etth1,main_largen,dmodel,geom_largen}_sNNN.json
+                        per-(stage, seed) outputs from extra_seeds
     <out>/summary.txt        human-readable aggregate of everything
 """
 
@@ -77,7 +87,10 @@ ENCODERS_DMODEL = ["sum", "concat"]
 
 ALL_STAGES = ["main", "dmodel", "geometry", "probe", "mask", "etth1",
               "convergence", "bias", "geom_largen", "main_largen",
-              "pospro_geometry"]
+              "pospro_geometry", "extra_seeds"]
+
+EXTRA_DMODEL_ENCODERS = ["sum", "concat", "linear", "linear-ppe",
+                         "mlp", "sum-ortho"]
 
 
 def header(s: str) -> None:
@@ -291,6 +304,7 @@ def _train_etth1(encoder: str, seed: int, epochs: int, device: str,
         lr_schedule="cosine", lr=3e-4, lr_min_frac=0.01, epochs=epochs))
 
     trace = []
+    per_example_at_checkpoint: list = []
     t0 = time.time()
     for ep in range(epochs):
         model.train()
@@ -303,28 +317,21 @@ def _train_etth1(encoder: str, seed: int, epochs: int, device: str,
         if sched is not None:
             sched.step()
         if (ep + 1) % log_every == 0 or ep == 0 or ep == epochs - 1:
-            model.eval()
-            tot_loss, tot_correct, tot_n = 0.0, 0, 0
-            with torch.no_grad():
-                for x, y in val_loader:
-                    x, y = x.to(device), y.to(device)
-                    logits = model(x)
-                    pred = logits[:, :-1].argmax(-1)
-                    tgt = y[:, 1:]
-                    tot_correct += (pred == tgt).sum().item()
-                    tot_n += tgt.numel()
-                    tot_loss += nll_loss(logits, y).item() * tgt.numel()
-            trace.append(dict(epoch=ep + 1,
-                              val_nll=tot_loss / tot_n,
-                              val_acc=tot_correct / tot_n))
-    best = min(trace, key=lambda t: t["val_nll"])
+            vnll, vacc, per_ex = evaluate(
+                model, val_loader, device, return_per_example=True)
+            trace.append(dict(epoch=ep + 1, val_nll=vnll, val_acc=vacc))
+            per_example_at_checkpoint.append(per_ex)
+    best_idx = min(range(len(trace)), key=lambda i: trace[i]["val_nll"])
+    best = trace[best_idx]
     return dict(encoder=encoder, seed=seed, params=n_params,
                 seconds=time.time() - t0, trace=trace,
                 best_val_nll=best["val_nll"],
                 best_val_acc=best["val_acc"],
                 best_epoch=best["epoch"],
                 final_val_nll=trace[-1]["val_nll"],
-                final_val_acc=trace[-1]["val_acc"])
+                final_val_acc=trace[-1]["val_acc"],
+                best_per_example_nll=per_example_at_checkpoint[best_idx],
+                final_per_example_nll=per_example_at_checkpoint[-1])
 
 
 def stage_etth1(args, device) -> list:
@@ -510,6 +517,159 @@ def stage_pospro_geometry(args, device) -> dict:
                   f"frac(P in span W)={frac_in_span_W:.3f} "
                   f"({time.time()-t0:.1f}s)", flush=True)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Stage 7e: open-ended round-robin extra seeds
+# ---------------------------------------------------------------------------
+
+_EXTRA_STAGES = ["main", "etth1", "main_largen", "dmodel", "geom_largen"]
+
+
+def _extra_done(out_dir: str, s: int) -> bool:
+    """All five stage outputs for seed s already on disk."""
+    return all(
+        os.path.exists(os.path.join(out_dir, f"{stage}_s{s:03d}.json"))
+        for stage in _EXTRA_STAGES
+    )
+
+
+def stage_extra_seeds(args, device) -> None:
+    """Open-ended round-robin: outer loop is seed (starting from
+    --extra-seeds-start), inner loops are the five paired-test-
+    sensitive stages. Loops forever until interrupted. After each
+    completed seed cycle, every covered stage has one more seed of
+    data on disk. Killing the process at any point leaves a balanced
+    set of extra runs (or, mid-cycle, only up to whichever stages
+    have already written their per-seed JSON).
+
+    Writes per-(stage, seed) files to <out>/extra_seeds/ so the
+    canonical <out>/{main,etth1,...}.json files are never touched.
+    Seeds whose five output files already exist are skipped, so
+    re-launching the stage resumes where it left off."""
+    import itertools
+    out_dir = os.path.join(args.out, "extra_seeds")
+    os.makedirs(out_dir, exist_ok=True)
+    header(f"extra_seeds: round-robin from seed "
+           f"{args.extra_seeds_start}, looping until interrupted")
+    print(f"  output dir: {out_dir}", flush=True)
+    print(f"  stages per cycle: {_EXTRA_STAGES}", flush=True)
+
+    for s in itertools.count(args.extra_seeds_start):
+        if _extra_done(out_dir, s):
+            print(f"\n----- Seed {s}: already complete on disk, skipping -----",
+                  flush=True)
+            continue
+        cycle_t0 = time.time()
+        print(f"\n----- Seed {s} cycle starting -----", flush=True)
+
+        # 1) Synthetic main sweep at this seed.
+        main_path = os.path.join(out_dir, f"main_s{s:03d}.json")
+        if not os.path.exists(main_path):
+            runs = []
+            for C in args.Cs:
+                for enc in args.encoders:
+                    if enc == "cat" and C > args.cat_max_C:
+                        continue
+                    cfg = RunCfg(encoder=enc, C=C, seed=s,
+                                 epochs=args.epochs,
+                                 n_series=args.n_series)
+                    t0 = time.time()
+                    r = train_and_trace(cfg, device,
+                                        log_every=args.log_every)
+                    runs.append(r)
+                    print(f"  [main {enc:>10} C={C:>2} s={s}] "
+                          f"nll={r['best_val_nll']:.4f}@ep{r['best_epoch']:>3} "
+                          f"({time.time()-t0:.1f}s)", flush=True)
+            with open(main_path, "w") as f:
+                json.dump(runs, f, indent=2)
+
+        # 2) ETTh1 at this seed.
+        etth1_path = os.path.join(out_dir, f"etth1_s{s:03d}.json")
+        if not os.path.exists(etth1_path):
+            runs = []
+            for enc in args.encoders:
+                t0 = time.time()
+                r = _train_etth1(enc, s, args.epochs, device,
+                                 log_every=args.log_every)
+                runs.append(r)
+                print(f"  [etth1 {enc:>10} s={s}] "
+                      f"nll={r['best_val_nll']:.4f} "
+                      f"({time.time()-t0:.1f}s)", flush=True)
+            with open(etth1_path, "w") as f:
+                json.dump(runs, f, indent=2)
+
+        # 3) main_largen at this seed (top tier at C=16, N=5120).
+        largen_path = os.path.join(out_dir, f"main_largen_s{s:03d}.json")
+        if not os.path.exists(largen_path):
+            runs = []
+            for enc in args.main_largen_encoders:
+                cfg = RunCfg(encoder=enc, C=args.main_largen_C, seed=s,
+                             epochs=args.epochs,
+                             n_series=args.main_largen_n_series)
+                t0 = time.time()
+                r = train_and_trace(cfg, device,
+                                    log_every=args.log_every)
+                runs.append(r)
+                print(f"  [main_largen {enc:>10} s={s}] "
+                      f"nll={r['best_val_nll']:.4f} "
+                      f"({time.time()-t0:.1f}s)", flush=True)
+            with open(largen_path, "w") as f:
+                json.dump(runs, f, indent=2)
+
+        # 4) dmodel sweep at this seed (all 6 top-tier-plus-sum encoders).
+        dmodel_path = os.path.join(out_dir, f"dmodel_s{s:03d}.json")
+        if not os.path.exists(dmodel_path):
+            runs = []
+            for dm in args.d_models:
+                d_ff = 4 * dm
+                for enc in EXTRA_DMODEL_ENCODERS:
+                    cfg = RunCfg(encoder=enc, C=4, seed=s,
+                                 epochs=args.epochs,
+                                 n_series=args.n_series,
+                                 d_model=dm, d_ff=d_ff)
+                    t0 = time.time()
+                    r = train_and_trace(cfg, device,
+                                        log_every=args.log_every)
+                    runs.append(r)
+                    print(f"  [dmodel {enc:>10} d={dm:>3} s={s}] "
+                          f"nll={r['best_val_nll']:.4f} "
+                          f"({time.time()-t0:.1f}s)", flush=True)
+            with open(dmodel_path, "w") as f:
+                json.dump(runs, f, indent=2)
+
+        # 5) geom_largen at this seed (linear at C=8, N=5120, with the
+        # full geometry diagnostics so future-Claude can aggregate).
+        gln_path = os.path.join(out_dir, f"geom_largen_s{s:03d}.json")
+        if not os.path.exists(gln_path):
+            cfg = RunCfg(encoder="linear", C=8, seed=s,
+                         epochs=args.epochs,
+                         n_series=args.geom_largen_n_series)
+            t0 = time.time()
+            r, model, val_loader = train_and_trace(
+                cfg, device, log_every=args.log_every, return_model=True)
+            gram = model.encoder.gram_stats()
+            xs = [xb for xb, _ in val_loader]
+            x_all = torch.cat(xs, 0).to(device)
+            var = model.encoder.variance_stats(x_all)
+            entry = dict(
+                C=8, seed=s, n_series=args.geom_largen_n_series,
+                best_val_nll=r["best_val_nll"],
+                norms=gram["norms"],
+                max_off_abs_cos=gram["max_off_abs_cos"],
+                mean_off_abs_cos=gram["mean_off_abs_cos"],
+                var_fraction=var["var_fraction"],
+            )
+            with open(gln_path, "w") as f:
+                json.dump([entry], f, indent=2)
+            print(f"  [geom_largen linear C=8 s={s} N={args.geom_largen_n_series}] "
+                  f"nll={r['best_val_nll']:.4f} "
+                  f"mean|cos|={gram['mean_off_abs_cos']:.4f} "
+                  f"({time.time()-t0:.1f}s)", flush=True)
+
+        cycle_secs = time.time() - cycle_t0
+        print(f"----- Seed {s} cycle done in {cycle_secs:.0f}s "
+              f"({cycle_secs/60:.1f} min) -----", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -845,6 +1005,10 @@ def main() -> None:
     p.add_argument("--pospro-seeds", type=int, default=5,
                    help="seed count for the pospro_geometry stage "
                         "(default: 5)")
+    p.add_argument("--extra-seeds-start", type=int, default=5,
+                   help="first seed for the extra_seeds round-robin "
+                        "stage (default: 5, so seeds 0..4 already "
+                        "covered by the canonical runs are preserved)")
     p.add_argument("--stages", nargs="+", choices=ALL_STAGES,
                    default=ALL_STAGES,
                    help="which stages to run (default: all)")
@@ -917,6 +1081,11 @@ def main() -> None:
         results["pospro_geometry"] = pg
         with open(os.path.join(args.out, "pospro_geometry.json"), "w") as f:
             json.dump(pg, f, indent=2)
+
+    if "extra_seeds" in args.stages:
+        # Open-ended; writes per-seed files itself and does not return
+        # in-memory data. Loops until interrupted.
+        stage_extra_seeds(args, device)
 
     if "convergence" in args.stages:
         # Convergence requires main traces. If `main` wasn't run this session,

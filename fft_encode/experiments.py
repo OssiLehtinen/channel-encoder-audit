@@ -66,9 +66,17 @@ def make_loaders(cfg: RunCfg):
     )
 
 
-def evaluate(model, loader, device, mask_channel: int | None = None):
+def evaluate(model, loader, device, mask_channel: int | None = None,
+             return_per_example: bool = False):
+    """Aggregate next-step NLL and bin accuracy over the val set.
+
+    If ``return_per_example=True``, also returns a list of per-sequence
+    mean NLLs (one float per series in the loader, in iteration order),
+    suitable for example-level bootstrap downstream."""
+    import torch.nn.functional as F
     model.eval()
     tot_loss, tot_correct, tot_n = 0.0, 0, 0
+    per_example_nlls: list = []
     with torch.no_grad():
         for x, y in loader:
             x, y = x.to(device), y.to(device)
@@ -82,7 +90,23 @@ def evaluate(model, loader, device, mask_channel: int | None = None):
             tot_correct += (pred == tgt).sum().item()
             tot_n += tgt.numel()
             tot_loss += loss.item() * tgt.numel()
-    return tot_loss / tot_n, tot_correct / tot_n
+            if return_per_example:
+                # Per-position cross-entropy for this batch, then average
+                # over positions within each sequence -> one float per
+                # sequence in the batch.
+                B = y.size(0)
+                T = y.size(1)
+                pred_logits = logits[:, :-1].reshape(-1, logits.size(-1))
+                tgt_flat = y[:, 1:].reshape(-1)
+                per_pos = F.cross_entropy(
+                    pred_logits, tgt_flat, reduction="none"
+                ).view(B, T - 1)
+                per_example_nlls.extend(per_pos.mean(dim=1).cpu().tolist())
+    avg_nll = tot_loss / tot_n
+    avg_acc = tot_correct / tot_n
+    if return_per_example:
+        return avg_nll, avg_acc, per_example_nlls
+    return avg_nll, avg_acc
 
 
 def train_run(cfg: RunCfg, device, return_model: bool = False):
