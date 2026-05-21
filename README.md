@@ -1,5 +1,7 @@
 # FDM Channel Encoding
 
+Ossi Lehtinen, Ocon Oy — <ossi@ocon.fi>
+
 A frequency-division-multiplexing–inspired input encoding for multi-signal
 transformers. Each channel gets a non-overlapping block of embedding
 dimensions, and its scalar value amplitude-modulates a channel-specific,
