@@ -20,7 +20,7 @@
 \title{An Empirical Audit of Input Encoders for\\
        Multi-Channel Signal Transformers}
 
-\author{Ossi Lehtinen\thanks{\texttt{ossi@ocon.fi}}}
+\author{Ossi Lehtinen\thanks{\texttt{ossi@ocon.fi}\\\texttt{Anthropic's Claude Code, and models Opus 4.6 and 4.7 were extensively used in preparing the experiments and writing this article.}}}
 \affil{Ocon Oy}
 \date{}
 
@@ -38,15 +38,17 @@ orthogonality regulariser, a nonlinear MLP stem, block-partitioned
 concatenation, channel-independent and channel-as-token
 architectures, and a projected positional encoding---on a synthetic
 benchmark designed to make channel identity informative and on
-ETTh1 as a real-data check, at $20$ paired seeds, measured in
+ETTh1 as a real-data check, measured in
 next-step negative log-likelihood (NLL). The headline is one of
 practical near-equivalence within a wide ``top tier'': the
 standard per-channel linear projection
 (\texttt{nn.Linear(C, $d_{\text{model}}$)}) matches every
-alternative we test up to small, statistically real but practically
-modest, differences. The only encoder that decisively loses is the
+alternative in that tier up to small, statistically real but
+practically modest, differences. Two encoders lose decisively: the
 shared-scalar baseline, which collapses for information-theoretic
-reasons we make explicit. Paired tests resolve two small gaps:
+reasons we make explicit, and the channel-independent
+PatchTST-spirit baseline, which underperforms on both benchmarks
+and overfits universally on the synthetic one. Paired tests resolve two small gaps:
 projecting the sinusoidal positional encoding through a learned
 linear layer edges the rest at small $C$, with a direct geometric
 probe showing the mechanism is positional--channel
@@ -67,8 +69,12 @@ Transformers applied to multivariate numerical signals---multi-sensor
 telemetry, financial factor stacks, biomedical waveforms---face a
 design choice at the input layer: how to embed $C$ simultaneous scalar
 channels into one $d_{\text{model}}$-dimensional vector per time step.
+The central objective is to prepare the input information for the
+the subsequent transformer layer with minimal losses, thus allowing
+maximal flexibility for modeling the influence and interplay of the
+signals in relation to the target variables.
 
-\paragraph{Prior art.}
+Many approaches have been put forward for achieving just this.
 The additive embedding recipe inherited from NLP
 \citep{vaswani2017attention} projects each input to a vector and sums.
 When the inputs are multiple channels rather than one token-plus-position
@@ -85,12 +91,12 @@ per channel (PatchTST \citep{nie2023patchtst}), or combine both
 weight matrices have been used for feature decorrelation in deep
 networks \citep{bansal2018gainsorthogonality}.
 
-\paragraph{Open questions.}
 Despite the variety of approaches, several basic questions remain
 unanswered in the literature:
 (i)~Compared to a bare \texttt{nn.Linear(C, $d_{\text{model}}$)}
 projection, what do we actually gain---in held-out loss, in
-geometric structure, or in convergence speed---from block
+geometric structure, or in convergence speed---from more involved 
+architectures, such as block
 partitioning, an orthogonality penalty, a nonlinear MLP stem, or a
 channel-independent / channel-as-token architecture?
 (ii)~Does the task loss itself produce per-channel separation
@@ -103,8 +109,7 @@ collapses $C$ channels to their pointwise sum, so its failure mode
 is information-theoretic and the only quantity of interest is how
 much downstream capacity fails to recover from it.
 
-\paragraph{Our contribution.}
-We compare eight encoders on a controlled synthetic benchmark
+Here, we compare eight encoders on a controlled synthetic benchmark
 designed to make channel identity informative, with supporting
 experiments on the public ETTh1 dataset
 \citep{zhou2021informer}. Three answers map onto the three open
@@ -135,12 +140,20 @@ statistically tied with \textsc{linear} and \textsc{linear-ortho}.
 
 \subsection{Model architecture}
 
-All encoders share a common backbone: a small causal transformer with
-$d_{\text{model}}{=}64$, 4 attention heads, 3 layers, feed-forward
-width $d_{\text{ff}}{=}256$, dropout $0.1$, pre-LayerNorm, and a
-linear categorical head mapping to $K{=}32$ logits. The \emph{only}
-component that varies across experiments is the input encoder
-(Figure~\ref{fig:arch}).
+Six of the eight encoders (\textsc{sum}, \textsc{linear},
+\textsc{linear-ortho}, \textsc{mlp}, \textsc{linear-ppe},
+\textsc{concat}) share a common backbone: a small causal
+transformer with $d_{\text{model}}{=}64$, 4 attention heads, 3
+layers, feed-forward width $d_{\text{ff}}{=}256$, dropout $0.1$,
+pre-LayerNorm, and a linear categorical head mapping to $K{=}32$
+logits. For these six, the \emph{only} component that varies is
+the input encoder (Figure~\ref{fig:arch}). The other two encoders
+(\textsc{ci} and \textsc{cat}) are architectural alternatives that
+reshape the token sequence the backbone consumes; their structure
+is described in Section~\ref{sec:method-encoders} and we still
+match $d_{\text{model}}$, head count, and layer count to the
+shared backbone so the architectural cost of those alternatives is
+comparable.
 
 \begin{figure}[t]
 \centering
@@ -166,7 +179,7 @@ component that varies across experiments is the input encoder
   \node[ioblock]                  (input) {Input
         $\mathbf{x} \in \mathbb{R}^{B \times T \times C}$};
   \node[encblock, below=of input] (enc)   {\textbf{\textsc{Encoder}}\\
-        \emph{(the swap point: one of eight variants, see caption)}};
+        \emph{(the swap point: one of eight variants)}};
   \node[txblock, below=of enc]    (b1)    {Transformer block 1};
   \node[txblock, below=of b1]     (b2)    {Transformer block 2};
   \node[txblock, below=of b2]     (b3)    {Transformer block 3};
@@ -201,16 +214,26 @@ component that varies across experiments is the input encoder
   \draw[dashed, gray] (b2.east) -- (z1.west);
 
 \end{tikzpicture}
-\caption{Architecture. Every experiment uses the same causal
-transformer backbone (three pre-LN blocks, each structured as in
-the inset on the right: LN $\to$ self-attention $\to$ residual, LN
-$\to$ FFN $\to$ residual; followed by a final LayerNorm and a
-linear head into $K{=}32$ bin logits). \textbf{The only component
-that varies across experiments is the encoder (blue).} The eight
-encoder variants share the same input/output signature
-$\mathbb{R}^{B\times T\times C} \to \mathbb{R}^{B\times T\times
-d_{\text{model}}}$ and are drop-in interchangeable. Precise
-definitions in Section~\ref{sec:method-encoders}.}
+\caption{Architecture. The diagram shows the encoder-swap setup
+used by six of the eight variants
+(\textsc{sum}, \textsc{linear}, \textsc{linear-ortho}, \textsc{mlp},
+\textsc{linear-ppe}, \textsc{concat}): the same causal transformer
+backbone (three pre-LN blocks, each structured as in the inset on
+the right: LN $\to$ self-attention $\to$ residual, LN $\to$ FFN
+$\to$ residual; followed by a final LayerNorm and a linear head
+into $K{=}32$ bin logits) is used throughout, and \textbf{the only
+component that varies is the encoder (blue)}. These six encoders
+share the input/output signature $\mathbb{R}^{B\times T\times C}
+\to \mathbb{R}^{B\times T\times d_{\text{model}}}$ and are drop-in
+interchangeable. The remaining two variants---\textsc{ci}
+(channel-independent) and \textsc{cat} (channel-as-token)---are
+full-architecture alternatives, not encoder swaps: \textsc{ci}
+runs the transformer once per channel on $(B{\cdot}C, T,
+d_{\text{model}})$ tensors and concatenates the per-channel
+hiddens at the head; \textsc{cat} uses a $C{\cdot}T$-long token
+sequence with attention over $(B, C{\cdot}T, d_{\text{model}})$.
+Both are included as architectural baselines and are defined in
+full in Section~\ref{sec:method-encoders}.}
 \label{fig:arch}
 \end{figure}
 
@@ -254,8 +277,8 @@ passes through a learned linear layer:
                 + W_{\text{pos}}\,\mathbf{p}(t) + \mathbf{b}_{\text{pos}},
 \]
 with $W_{\text{pos}} \in \mathbb{R}^{d_{\text{model}} \times
-d_{\text{model}}}$. This lets the optimiser rotate the positional
-subspace to be orthogonal to the channel subspace. Adds
+d_{\text{model}}}$. The hypothesis is that the optimiser can then rotate the positional
+subspace to a channel subspace better compatible with the signal channel encodings. Adds
 $d_{\text{model}}^2 + d_{\text{model}}$ parameters (4{,}160 at $d{=}64$).
 The construction is closely related to the untied positional
 embedding of \citet{ke2021rethinking}, which removes the additive
@@ -281,8 +304,8 @@ architectural invariant.
 
 \paragraph{\textsc{ci} (channel-independent).} PatchTST-spirit
 \citep{nie2023patchtst}: shared-weight causal transformer per channel;
-final hidden states concatenated into the head. Compute:
-$\mathcal{O}(C\,B\,T^2)$.
+final hidden states concatenated into the head. The computational cost
+ of this approach is high with $\mathcal{O}(C\,B\,T^2)$ scaling.
 
 \paragraph{\textsc{cat} (channel-as-token).} iTransformer-spirit
 \citep{liu2024itransformer}: each $(t, k)$ pair is a token, sequence
@@ -323,7 +346,11 @@ estimates ($\beta_1{=}0.9$, $\beta_2{=}0.999$,
 $\epsilon{=}10^{-8}$). Gradient norm is clipped to $1.0$ per step,
 batch size $32$. The learning rate follows a cosine annealing
 schedule from peak to $3{\times}10^{-6}$ ($1\%$ of peak) over the
-full $300$ epochs, with no warm-up.
+full $300$ epochs, with no warm-up: the pre-LN architecture
+\citep{xiong2020layernorm} is gradient-stable at initialisation
+and our convergence flags across the $20$-seed sweep
+(Section~\ref{sec:results-convergence}) show no early instability
+on any of the top-tier encoders.
 
 \paragraph{Train/val split.}
 For the synthetic benchmark we generate $n_{\text{series}}{=}512$
@@ -530,10 +557,18 @@ the channel subspace, established in
 Section~\ref{sec:results-pospro}. The gap corresponds to about
 $2\%$ of the baseline NLL and is well within the spread that
 small task-design choices would induce; we read it as a real
-effect, not a practically transformative one. \textsc{ci} and
-\textsc{cat} underperform despite nominally giving each channel
-more capacity. The only encoder that loses decisively is
-\textsc{sum}, which lacks per-channel projections.
+effect, not a practically transformative one. Below the top tier, the architectural alternatives underperform
+despite nominally giving each channel more capacity. \textsc{cat}
+sits ${\sim}0.18$ NLL below the per-channel-$W_k$ family at
+$2.348$. \textsc{ci} drops decisively further at $3.053$, only
+${\sim}0.2$ NLL above the \textsc{sum} floor of $3.257$ and almost
+$0.9$ NLL below the top tier; it is closer to the shared-scalar
+information-theoretic floor than to the linear baseline. So two
+encoders lose decisively on the synthetic benchmark:
+\textsc{sum}, for the algebraic reasons discussed in the
+Discussion, and \textsc{ci}, whose head-side bottleneck and
+universal overfitting we unpack alongside the other architectural
+baseline in the Discussion.
 
 \subsection{Channel-count scaling}
 \label{sec:results-scaling}
@@ -552,10 +587,12 @@ $C{=}16$ due to $\mathcal{O}((CT)^2)$ attention cost.}
 All encoders degrade as $C$ grows (channels $k \ge 4$ are
 distractors). The per-channel-$W_k$ family stays clustered at the
 top across $C \in \{4, 8, 16\}$ and the gap to \textsc{sum} widens
-rather than narrows. \textsc{linear-ppe} sits at the very top
-across all three $C$ values; the paired-test statistics, and the
-geometric mechanism explaining why the gap shrinks with $C$, are
-in Section~\ref{sec:results-pospro}.
+rather than narrows. \textsc{linear-ppe} sits at the very top at
+$C{=}4$ and $C{=}8$ and ties \textsc{mlp} at $C{=}16$ (with
+\textsc{mlp} taking the lowest mean at that $C$); the paired-test
+statistics, and the geometric mechanism explaining why the
+\textsc{linear-ppe} edge shrinks with $C$, are in
+Section~\ref{sec:results-pospro}.
 
 At $C{=}16$, \textsc{mlp} pulls ahead of the linear family
 ($2.231$ vs.\ $2.27$--$2.34$). Paired tests against \textsc{linear}
@@ -675,14 +712,14 @@ Section~\ref{sec:method-diagnostics} to the trained $W_k$:
 \begin{table}[h]
 \centering
 \caption{Learned per-channel $W_k$ geometry ($C{=}4$, $300$ epochs,
-mean over 20 seeds).}
+mean $\pm$ std over $20$ seeds; same runs as Table~\ref{tab:main}).}
 \label{tab:gram}
 \begin{tabular}{lccc}
 \toprule
 encoder      & best val NLL & $\max_{i\ne j}|\cos(W_i,W_j)|$ & mean $|\cos|$ \\
 \midrule
-\textsc{linear}    & $2.155$ & $0.095$ & $0.042$ \\
-\textsc{linear-ortho} & $2.155$ & $0.022$ & $0.010$ \\
+\textsc{linear}      & $2.155 \pm 0.019$ & $0.095 \pm 0.032$ & $0.042 \pm 0.010$ \\
+\textsc{linear-ortho} & $2.155 \pm 0.020$ & $0.022 \pm 0.008$ & $0.010 \pm 0.003$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -707,8 +744,12 @@ $W^{(1)}$'s columns:
 \begin{table}[h]
 \centering
 \caption{\textsc{mlp} first-layer column geometry ($300$ epochs,
-$d_{\text{model}}{=}64$, $5$ seeds). Compare to \textsc{linear}'s
-$W_k$ at $C{=}4$: mean $0.042$, max $0.095$.}
+$d_{\text{model}}{=}64$). This is a $5$-seed sub-sweep run for the
+gram diagnostic, so the NLL column is noisier than the $20$-seed
+main-table estimate (\textsc{mlp} at $C{=}4$ in Table~\ref{tab:main}
+is $2.177 \pm 0.022$); the two estimates are within each other's
+seed std. Compare to \textsc{linear}'s $W_k$ at $C{=}4$:
+mean $0.042$, max $0.095$.}
 \label{tab:mlp-gram}
 \begin{tabular}{lccc}
 \toprule
@@ -743,11 +784,15 @@ offset that adds to every embedding regardless of input or
 position, so they cannot affect the cosine geometry. Retraining
 \textsc{linear} with the channel bias zeroed and frozen
 (\textsc{linear-nobias}) confirms this experimentally: val NLL
-stays within seed std ($2.177 \pm 0.013$ vs.\ $2.169 \pm 0.014$,
-5 seeds) and mean/max $|\cos|$ match to three decimals. We retain
-the bias in \textsc{linear}'s headline definition to match the
-PyTorch \texttt{nn.Linear} default; the point of the ablation is
-that the geometric argument is bias-independent.
+stays within seed std ($2.177 \pm 0.013$ for \textsc{linear-nobias}
+vs.\ $2.169 \pm 0.014$ for \textsc{linear}, both at $5$ seeds), and
+mean/max $|\cos|$ match to three decimals. The \textsc{linear}
+number here is a $5$-seed sub-sweep run for the ablation and is
+slightly higher than the $20$-seed main-table estimate
+($2.155 \pm 0.019$; both means within the same seed std). We
+retain the bias in \textsc{linear}'s headline definition to match
+the PyTorch \texttt{nn.Linear} default; the point of the ablation
+is that the geometric argument is bias-independent.
 
 \subsection{Encoding space allocation}
 \label{sec:results-space}
@@ -914,9 +959,14 @@ own---worse---best NLL on the synthetic benchmark.
 \subsection{Positional projection: the orthogonalisation mechanism}
 \label{sec:results-pospro}
 
-\textsc{linear-ppe} achieves the lowest val NLL at every $C$ we
-test. The paired-seed design (Section~\ref{sec:method-training})
-gives one $\Delta_s$ per seed; at 20 seeds the picture is:
+\textsc{linear-ppe} achieves the lowest val NLL at $C{=}4$ and
+$C{=}8$ and ties \textsc{mlp} at $C{=}16$ (the two are within each
+other's seed std at $C{=}16$, where \textsc{mlp} has the lower
+mean $2.231$ vs.\ \textsc{linear-ppe}'s $2.252$). Within the
+linear family, \textsc{linear-ppe} edges \textsc{linear} at every
+$C$. The paired-seed design (Section~\ref{sec:method-training})
+gives one $\Delta_s$ per seed; at $20$ seeds the
+\textsc{linear-ppe} vs.\ \textsc{linear} picture is:
 
 \begin{itemize}
 \item $C{=}4$: $\Delta = 0.041$, paired $t{=}6.60$,
@@ -1311,6 +1361,12 @@ where nonlinear gating may help, or a setting whose cross-variate
 structure justifies \textsc{cat}'s ${\sim}5{\times}$ wall-clock
 cost and $C{\cdot}T$ context length.
 
+When we recognise, that a per channel linear projection is all that
+is needed for serving the input signals to the main model as
+orthogonally distinct entities for it to work from, we can focus
+our modelling efforts and complexity to where it matters.
+
+
 \bibliographystyle{plainnat}
 \begin{thebibliography}{9}
 \bibitem[Alain and Bengio(2017)]{alain2017probes}
@@ -1375,6 +1431,12 @@ H.~Wu, T.~Hu, Y.~Liu, H.~Zhou, J.~Wang, and M.~Long.
 \newblock {TimesNet}: temporal 2{D}-variation modeling for general time
   series analysis.
 \newblock In \emph{ICLR}, 2023.
+
+\bibitem[Xiong et al.(2020)]{xiong2020layernorm}
+R.~Xiong, Y.~Yang, D.~He, K.~Zheng, S.~Zheng, C.~Xing, H.~Zhang,
+  Y.~Lan, L.~Wang, and T.-Y. Liu.
+\newblock On layer normalization in the transformer architecture.
+\newblock In \emph{ICML}, 2020.
 
 \bibitem[Zeng et al.(2023)]{zeng2023transformers}
 A.~Zeng, M.~Chen, L.~Zhang, and Q.~Xu.
