@@ -3,25 +3,24 @@
 \caption{ETTh1 next-step bin prediction. 7 variates, $T{=}160$, $K{=}32$
 quantile bins on the target OT (oil temperature) computed from the train
 split. Target is the next-step bin of OT; all 7 variates are inputs.
-$d_{\text{model}}{=}56$, 7 heads, 3 layers, $d_{\text{ff}}{=}224$; 100
-epochs, cosine decay, 5 seeds, mean $\pm$ std of best val NLL.}
+$d_{\text{model}}{=}56$, 7 heads, 3 layers, $d_{\text{ff}}{=}224$; 300
+epochs, cosine decay, 5 seeds, mean $\pm$ std of best val NLL and best
+val accuracy. \textsc{linear-ppe} is included for parity with the
+synthetic benchmark; it does not lead here.}
 \label{tab:etth1}
 \begin{tabular}{lcc}
 \toprule
-encoder     & val NLL $\downarrow$ & val acc $\uparrow$ \\
+encoder & val NLL $\downarrow$ & val acc $\uparrow$ \\
 \midrule
-\textsc{sum}       & $3.636 \pm 0.060$  & $0.008 \pm 0.008$ \\
-\textsc{ci}        & $0.825 \pm 0.046$  & $0.678 \pm 0.023$ \\
-\textsc{cat}$^\dagger$ & $0.581$         & $0.780$ \\
+\textsc{sum}        & $3.633 \pm 0.049$  & $0.018 \pm 0.024$ \\
+\textsc{ci}         & $0.853 \pm 0.022$  & $0.674 \pm 0.013$ \\
 \midrule
-\textbf{\textsc{concat}}    & $\mathbf{0.582 \pm 0.015}$ & $\mathbf{0.787 \pm 0.008}$ \\
-\textbf{\textsc{linear}}    & $\mathbf{0.587 \pm 0.014}$ & $\mathbf{0.793 \pm 0.008}$ \\
-\textbf{\textsc{sum-ortho}} & $\mathbf{0.588 \pm 0.014}$ & $\mathbf{0.794 \pm 0.009}$ \\
-\textbf{\textsc{mlp}}       & $\mathbf{0.597 \pm 0.025}$ & $\mathbf{0.786 \pm 0.005}$ \\
+\textsc{cat}        & $\mathbf{0.541 \pm 0.011}$  & $0.787 \pm 0.008$ \\
+\textsc{concat}     & $0.560 \pm 0.010$  & $0.777 \pm 0.018$ \\
+\textsc{linear}     & $0.566 \pm 0.019$  & $0.789 \pm 0.008$ \\
+\textsc{linear-ppe} & $0.570 \pm 0.015$  & $0.773 \pm 0.005$ \\
+\textsc{sum-ortho}  & $0.572 \pm 0.022$  & $0.787 \pm 0.008$ \\
+\textsc{mlp}        & $0.577 \pm 0.010$  & $0.790 \pm 0.007$ \\
 \bottomrule
 \end{tabular}
-\\[2pt]
-\footnotesize $\dagger$ \textsc{cat} single-seed result only
-(attention cost $\mathcal{O}((CT)^2)$; each seed takes $\sim$25 min at
-$C{=}7$).
 \end{table}

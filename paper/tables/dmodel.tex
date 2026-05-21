@@ -1,29 +1,28 @@
 \begin{table}[t]
 \centering
 \caption{Scaling with $d_{\text{model}}$ at $C{=}4$. $d_{\text{ff}}{=}4\,d_{\text{model}}$,
-heads$=$4 (so $d_{\text{head}}$ grows). Mean $\pm$ std over 5 seeds, 100 epochs
+heads$=$4 (so $d_{\text{head}}$ grows). Mean $\pm$ std over 5 seeds, 300 epochs
 with cosine decay.
 \textsc{sum} shows its structural ceiling: $15\times$ more parameters
-barely move it. \textsc{concat} scales strongly but begins to overfit at
-$d_{\text{model}}{=}256$. \textsc{linear} and \textsc{sum-ortho} were
-run only at $d_{\text{model}}{=}64$ (see Table~\ref{tab:main}) and are
-omitted here.}
+barely move it. \textsc{concat}'s best NLL degrades mildly as
+$d_{\text{model}}$ grows past $64$, consistent with overfitting at
+larger widths on this dataset.}
 \label{tab:dmodel}
 \begin{tabular}{llccc}
 \toprule
 $d_{\text{model}}$ & encoder & total params & val NLL $\downarrow$ & val acc $\uparrow$ \\
 \midrule
 \multirow{2}{*}{64}
-    & \textsc{sum}       & $152{,}480$ & $3.253 \pm 0.007$ & $0.092 \pm 0.003$ \\
-    & \textbf{\textsc{concat}} & $152{,}288$ & $\mathbf{2.429 \pm 0.038}$ & $\mathbf{0.201 \pm 0.007}$ \\
+    & \textsc{sum}    & $152{,}480$    & $3.252 \pm 0.009$ & $0.092 \pm 0.003$ \\
+    & \textsc{concat} & $152{,}288$    & $2.183 \pm 0.030$ & $0.240 \pm 0.005$ \\
 \midrule
 \multirow{2}{*}{128}
-    & \textsc{sum}       & $599{,}840$ & $3.251 \pm 0.008$ & $0.094 \pm 0.002$ \\
-    & \textbf{\textsc{concat}} & $599{,}456$ & $\mathbf{2.291 \pm 0.009}$ & $\mathbf{0.223 \pm 0.002}$ \\
+    & \textsc{sum}    & $599{,}840$    & $3.253 \pm 0.008$ & $0.092 \pm 0.003$ \\
+    & \textsc{concat} & $599{,}456$    & $2.235 \pm 0.014$ & $0.235 \pm 0.004$ \\
 \midrule
 \multirow{2}{*}{256}
-    & \textsc{sum}       & $2{,}379{,}296$ & $3.255 \pm 0.007$ & $0.091 \pm 0.001$ \\
-    & \textbf{\textsc{concat}} & $2{,}378{,}528$ & $\mathbf{2.322 \pm 0.014}$ & $\mathbf{0.221 \pm 0.003}$ \\
+    & \textsc{sum}    & $2{,}379{,}296$ & $3.256 \pm 0.007$ & $0.092 \pm 0.001$ \\
+    & \textsc{concat} & $2{,}378{,}528$ & $2.327 \pm 0.017$ & $0.218 \pm 0.006$ \\
 \bottomrule
 \end{tabular}
 \end{table}

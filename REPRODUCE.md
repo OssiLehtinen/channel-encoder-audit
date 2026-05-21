@@ -91,9 +91,3 @@ Build dependencies: any TeX Live with `booktabs`, `multirow`, `natbib`,
   `build_model`, so JSON files in `results_paper/` (which use `sum-perch`)
   can be loaded and analysed alongside fresh runs from the new script.
 
-## Pending
-
-- `cat` on ETTh1 at 300 epochs is the one stage not yet committed to
-  `results_paper/etth1.json` (the run was aborted mid-stream). Running
-  `fft_encode.reproduce --stages etth1` fills it in; expect roughly two
-  hours of wall time for those 5 seeds alone.

@@ -22,35 +22,41 @@ is not pinned down here.
 
 **Synthetic, $C=4$ channels:**
 
-| Encoder        | Val NLL ↓        | Val acc ↑        |
-| -------------- | ---------------- | ---------------- |
-| `sum`          | $3.252 \pm 0.010$ | $0.091 \pm 0.002$ |
-| `ci`           | $3.053 \pm 0.008$ | $0.139 \pm 0.002$ |
-| `cat`          | $2.371 \pm 0.068$ | $0.210 \pm 0.014$ |
-| `concat`       | $2.183 \pm 0.032$ | $0.243 \pm 0.006$ |
-| `mlp`          | $2.170 \pm 0.032$ | $0.244 \pm 0.010$ |
-| `sum-ortho`    | $2.170 \pm 0.014$ | $0.246 \pm 0.004$ |
-| `linear`       | $2.169 \pm 0.014$ | $0.248 \pm 0.004$ |
-| **`linear-ppe`** | **$2.120 \pm 0.033$** | **$0.258 \pm 0.009$** |
+| Encoder          | Val NLL ↓             | Val acc ↑             |
+| ---------------- | --------------------- | --------------------- |
+| `sum`            | $3.252 \pm 0.009$     | $0.092 \pm 0.003$     |
+| `ci`             | $3.054 \pm 0.007$     | $0.139 \pm 0.003$     |
+| `cat`            | $2.360 \pm 0.073$     | $0.210 \pm 0.014$     |
+| `concat`         | $2.183 \pm 0.030$     | $0.240 \pm 0.005$     |
+| `mlp`            | $2.171 \pm 0.029$     | $0.244 \pm 0.008$     |
+| `sum-ortho`      | $2.170 \pm 0.016$     | $0.245 \pm 0.006$     |
+| `linear`         | $2.170 \pm 0.016$     | $0.243 \pm 0.005$     |
+| **`linear-ppe`** | **$2.116 \pm 0.034$** | **$0.257 \pm 0.009$** |
 
 Random baseline: NLL $= \ln 32 \approx 3.466$, acc $= 1/32 \approx 0.031$.
 
 **ETTh1 (7 variates, next-step bin of oil temperature):**
 
-| Encoder      | Val NLL ↓        | Val acc ↑        |
-| ------------ | ---------------- | ---------------- |
-| `sum`        | $3.636 \pm 0.054$ | $0.008 \pm 0.007$ |
-| `ci`         | $0.822 \pm 0.040$ | $0.678 \pm 0.022$ |
-| `mlp`        | $0.579 \pm 0.025$ | $0.786 \pm 0.009$ |
-| `linear-ppe` | $0.568 \pm 0.009$ | $0.777 \pm 0.012$ |
-| `sum-ortho`  | $0.564 \pm 0.016$ | $0.791 \pm 0.009$ |
-| `concat`     | $0.560 \pm 0.011$ | $0.778 \pm 0.013$ |
-| `linear`     | $0.559 \pm 0.015$ | $0.790 \pm 0.009$ |
-| `cat`        | _(pending)_       | _(pending)_       |
+| Encoder      | Val NLL ↓             | Val acc ↑         |
+| ------------ | --------------------- | ----------------- |
+| `sum`        | $3.633 \pm 0.049$     | $0.018 \pm 0.024$ |
+| `ci`         | $0.853 \pm 0.022$     | $0.674 \pm 0.013$ |
+| `mlp`        | $0.577 \pm 0.010$     | $0.790 \pm 0.007$ |
+| `sum-ortho`  | $0.572 \pm 0.022$     | $0.787 \pm 0.008$ |
+| `linear-ppe` | $0.570 \pm 0.015$     | $0.773 \pm 0.005$ |
+| `linear`     | $0.566 \pm 0.019$     | $0.789 \pm 0.008$ |
+| `concat`     | $0.560 \pm 0.010$     | $0.777 \pm 0.018$ |
+| **`cat`**    | **$0.541 \pm 0.011$** | $0.787 \pm 0.008$ |
 
-The synthetic ordering reproduces on real data: `sum` fails catastrophically;
-the per-channel-`W_k` family ties at the top within seed noise; `ci`
-underperforms.
+`sum` fails catastrophically; `ci` underperforms; the per-channel-$W_k$
+family clusters within seed noise. `cat` posts the lowest mean NLL on
+real data — but its confidence interval barely separates from
+`concat`/`linear` and best-bin accuracies across the top tier are
+indistinguishable, so the honest reading is that `cat`'s
+synthetic-benchmark disadvantage closes on ETTh1, not that it
+decisively wins. The most plausible reason: ETTh1's seven variates are
+all informative measurements of one physical system, which rewards the
+fine-grained cross-variate attention `cat` enables.
 
 ---
 
@@ -117,8 +123,7 @@ uv run python -m fft_encode.reproduce --out results/ \
 
 The exact JSON outputs that produced the numbers in the paper are committed
 under `results_paper/`. The reproducer writes to `results/` by default so
-reference numbers stay untouched. `cat` on ETTh1 at 300 epochs is still
-pending in `results_paper/` (see `claude_resume`).
+reference numbers stay untouched.
 
 ### Figures
 

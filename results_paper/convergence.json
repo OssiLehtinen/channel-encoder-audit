@@ -1,0 +1,186 @@
+[
+  {
+    "encoder": "cat",
+    "C": 4,
+    "best_val_nll": 2.3601778002346263,
+    "mean_ep_to_plus_05": 180.0,
+    "mean_ep_to_plus_10": 148.0,
+    "mean_seconds": 119.99453072547912
+  },
+  {
+    "encoder": "cat",
+    "C": 8,
+    "best_val_nll": 2.3719970946218454,
+    "mean_ep_to_plus_05": 184.0,
+    "mean_ep_to_plus_10": 152.0,
+    "mean_seconds": 406.1602628707886
+  },
+  {
+    "encoder": "ci",
+    "C": 4,
+    "best_val_nll": 3.054079817790611,
+    "mean_ep_to_plus_05": 20.0,
+    "mean_ep_to_plus_10": 20.0,
+    "mean_seconds": 54.04547257423401
+  },
+  {
+    "encoder": "ci",
+    "C": 8,
+    "best_val_nll": 3.0559249064501595,
+    "mean_ep_to_plus_05": 20.0,
+    "mean_ep_to_plus_10": 20.0,
+    "mean_seconds": 102.31238074302674
+  },
+  {
+    "encoder": "ci",
+    "C": 16,
+    "best_val_nll": 3.0774983237771427,
+    "mean_ep_to_plus_05": 20.0,
+    "mean_ep_to_plus_10": 20.0,
+    "mean_seconds": 188.3508065223694
+  },
+  {
+    "encoder": "concat",
+    "C": 4,
+    "best_val_nll": 2.183349395265766,
+    "mean_ep_to_plus_05": 152.0,
+    "mean_ep_to_plus_10": 112.0,
+    "mean_seconds": 23.207238149642944
+  },
+  {
+    "encoder": "concat",
+    "C": 8,
+    "best_val_nll": 2.2220417705236697,
+    "mean_ep_to_plus_05": 160.0,
+    "mean_ep_to_plus_10": 120.0,
+    "mean_seconds": 22.726820945739746
+  },
+  {
+    "encoder": "concat",
+    "C": 16,
+    "best_val_nll": 2.336872713238585,
+    "mean_ep_to_plus_05": 140.0,
+    "mean_ep_to_plus_10": 112.0,
+    "mean_seconds": 23.448137474060058
+  },
+  {
+    "encoder": "linear",
+    "C": 4,
+    "best_val_nll": 2.17024297059751,
+    "mean_ep_to_plus_05": 152.0,
+    "mean_ep_to_plus_10": 116.0,
+    "mean_seconds": 23.3115225315094
+  },
+  {
+    "encoder": "linear",
+    "C": 8,
+    "best_val_nll": 2.1694434128555597,
+    "mean_ep_to_plus_05": 148.0,
+    "mean_ep_to_plus_10": 116.0,
+    "mean_seconds": 23.19520769119263
+  },
+  {
+    "encoder": "linear",
+    "C": 16,
+    "best_val_nll": 2.289201129651537,
+    "mean_ep_to_plus_05": 132.0,
+    "mean_ep_to_plus_10": 100.0,
+    "mean_seconds": 23.26496539115906
+  },
+  {
+    "encoder": "linear-ppe",
+    "C": 4,
+    "best_val_nll": 2.1161360693912883,
+    "mean_ep_to_plus_05": 148.0,
+    "mean_ep_to_plus_10": 108.0,
+    "mean_seconds": 23.13722929954529
+  },
+  {
+    "encoder": "linear-ppe",
+    "C": 8,
+    "best_val_nll": 2.1326367752224793,
+    "mean_ep_to_plus_05": 156.0,
+    "mean_ep_to_plus_10": 120.0,
+    "mean_seconds": 23.89215807914734
+  },
+  {
+    "encoder": "linear-ppe",
+    "C": 16,
+    "best_val_nll": 2.2812961774713854,
+    "mean_ep_to_plus_05": 140.0,
+    "mean_ep_to_plus_10": 100.0,
+    "mean_seconds": 24.236274433135986
+  },
+  {
+    "encoder": "mlp",
+    "C": 4,
+    "best_val_nll": 2.1706240653991697,
+    "mean_ep_to_plus_05": 144.0,
+    "mean_ep_to_plus_10": 116.0,
+    "mean_seconds": 23.44789848327637
+  },
+  {
+    "encoder": "mlp",
+    "C": 8,
+    "best_val_nll": 2.213194637672574,
+    "mean_ep_to_plus_05": 140.0,
+    "mean_ep_to_plus_10": 104.0,
+    "mean_seconds": 23.761167812347413
+  },
+  {
+    "encoder": "mlp",
+    "C": 16,
+    "best_val_nll": 2.2209451189228133,
+    "mean_ep_to_plus_05": 140.0,
+    "mean_ep_to_plus_10": 108.0,
+    "mean_seconds": 24.04115447998047
+  },
+  {
+    "encoder": "sum",
+    "C": 4,
+    "best_val_nll": 3.2520050563064276,
+    "mean_ep_to_plus_05": 20.0,
+    "mean_ep_to_plus_10": 20.0,
+    "mean_seconds": 23.2350857257843
+  },
+  {
+    "encoder": "sum",
+    "C": 8,
+    "best_val_nll": 3.301158415102491,
+    "mean_ep_to_plus_05": 20.0,
+    "mean_ep_to_plus_10": 20.0,
+    "mean_seconds": 23.873249435424803
+  },
+  {
+    "encoder": "sum",
+    "C": 16,
+    "best_val_nll": 3.308520896762025,
+    "mean_ep_to_plus_05": 20.0,
+    "mean_ep_to_plus_10": 20.0,
+    "mean_seconds": 24.081264352798463
+  },
+  {
+    "encoder": "sum-ortho",
+    "C": 4,
+    "best_val_nll": 2.1703537838131775,
+    "mean_ep_to_plus_05": 156.0,
+    "mean_ep_to_plus_10": 116.0,
+    "mean_seconds": 24.257340812683104
+  },
+  {
+    "encoder": "sum-ortho",
+    "C": 8,
+    "best_val_nll": 2.167017158807493,
+    "mean_ep_to_plus_05": 152.0,
+    "mean_ep_to_plus_10": 116.0,
+    "mean_seconds": 24.675697231292723
+  },
+  {
+    "encoder": "sum-ortho",
+    "C": 16,
+    "best_val_nll": 2.2971729914347327,
+    "mean_ep_to_plus_05": 132.0,
+    "mean_ep_to_plus_10": 100.0,
+    "mean_seconds": 24.803907680511475
+  }
+]

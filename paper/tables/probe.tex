@@ -1,26 +1,29 @@
 \begin{table}[t]
 \centering
-\caption{Linear-probe channel recovery at $C{=}4$, seed 0, after 100
-epochs of cosine-scheduled training. Closed-form ridge probe
-$\mathbf{h} \mapsto \hat{x}$ from a frozen hidden state to the raw
-input $x \in \mathbb{R}^4$; held-out per-channel $R^2$. Layer~0 is the
-input embedding; layer~3 is the final transformer block. All three
-per-channel-$W_k$ encoders achieve near-perfect input recovery and
-preserve mean $R^2 \ge 0.92$ through three attention layers;
-\textsc{sum} collapses to $R^2 \approx 0.24$ at every depth.}
+\caption{Linear-probe channel recovery at $C{=}4$, seed 0, 300 epochs.
+Closed-form ridge probe $\mathbf{h} \mapsto \hat{x}$ from a frozen hidden
+state to the raw input $x \in \mathbb{R}^4$; held-out per-channel
+$R^2$. Layer~0 is the input embedding; layer~3 is the final transformer
+block. All per-channel-$W_k$ encoders achieve near-perfect input
+recovery and preserve mean $R^2 \ge 0.84$ through three attention
+layers; \textsc{sum} collapses to $R^2 \approx 0.24$ at every depth.}
 \label{tab:probe}
 \begin{tabular}{llccccc}
 \toprule
 Encoder & Layer & $R^2_{\text{ch0}}$ & $R^2_{\text{ch1}}$ & $R^2_{\text{ch2}}$ & $R^2_{\text{ch3}}$ & mean \\
 \midrule
-\textsc{sum}       & 0 (input) & $0.255$ & $0.250$ & $0.242$ & $0.214$ & $0.240$ \\
-\textsc{sum}       & 3 (final) & $0.251$ & $0.243$ & $0.235$ & $0.206$ & $0.234$ \\
-\textsc{linear}    & 0 (input) & $1.000$ & $1.000$ & $1.000$ & $1.000$ & $\mathbf{1.000}$ \\
-\textsc{linear}    & 3 (final) & $0.963$ & $0.932$ & $0.933$ & $0.877$ & $\mathbf{0.926}$ \\
-\textsc{sum-ortho} & 0 (input) & $1.000$ & $1.000$ & $1.000$ & $1.000$ & $\mathbf{1.000}$ \\
-\textsc{sum-ortho} & 3 (final) & $0.963$ & $0.933$ & $0.934$ & $0.875$ & $\mathbf{0.926}$ \\
-\textsc{concat}    & 0 (input) & $0.995$ & $1.000$ & $1.000$ & $1.000$ & $0.999$ \\
-\textsc{concat}    & 3 (final) & $0.948$ & $0.950$ & $0.943$ & $0.906$ & $\mathbf{0.937}$ \\
+\textsc{sum}        & 0 (input) & $0.255$ & $0.250$ & $0.242$ & $0.214$ & $0.240$ \\
+\textsc{sum}        & 3 (final) & $0.248$ & $0.242$ & $0.235$ & $0.206$ & $0.233$ \\
+\textsc{linear}     & 0 (input) & $1.000$ & $1.000$ & $1.000$ & $1.000$ & $1.000$ \\
+\textsc{linear}     & 3 (final) & $0.957$ & $0.861$ & $0.911$ & $0.879$ & $0.902$ \\
+\textsc{sum-ortho}  & 0 (input) & $1.000$ & $1.000$ & $1.000$ & $1.000$ & $1.000$ \\
+\textsc{sum-ortho}  & 3 (final) & $0.959$ & $0.856$ & $0.915$ & $0.885$ & $0.904$ \\
+\textsc{mlp}        & 0 (input) & $1.000$ & $1.000$ & $1.000$ & $1.000$ & $1.000$ \\
+\textsc{mlp}        & 3 (final) & $0.934$ & $0.879$ & $0.913$ & $0.646$ & $0.843$ \\
+\textsc{linear-ppe} & 0 (input) & $1.000$ & $1.000$ & $1.000$ & $1.000$ & $1.000$ \\
+\textsc{linear-ppe} & 3 (final) & $0.930$ & $0.861$ & $0.874$ & $0.847$ & $0.878$ \\
+\textsc{concat}     & 0 (input) & $0.998$ & $1.000$ & $1.000$ & $1.000$ & $0.999$ \\
+\textsc{concat}     & 3 (final) & $0.955$ & $0.852$ & $0.906$ & $0.845$ & $0.890$ \\
 \bottomrule
 \end{tabular}
 \end{table}

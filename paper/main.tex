@@ -37,16 +37,21 @@ architectures, and a projected positional encoding---on a synthetic
 benchmark where channel identity is informative and on ETTh1 as a
 real-data check. At convergence the standard per-channel linear projection
 (\texttt{nn.Linear(C, $d_{\text{model}}$)}) matches every alternative
-we test to within seed noise. A variant that projects the sinusoidal
-positional encoding through a learned linear layer
-(\textsc{linear-ppe}) shows a small (${\sim}0.05$ NLL) advantage at
-$C{=}4$ on five seeds---suggestive but at the edge of what our sample
-resolves, and with the underlying mechanism (positional--channel
-orthogonalisation vs.\ positional subspace compression) not pinned
-down by the present data. A gram-matrix analysis shows the task loss
-drives channel projections to near-orthogonality without explicit
-regularisation, and learned norms are systematically larger for the
-outcome-relevant channels.
+we test to within seed noise on the synthetic benchmark. A variant
+that projects the sinusoidal positional encoding through a learned
+linear layer (\textsc{linear-ppe}) shows a small (${\sim}0.05$ NLL)
+advantage at $C{=}4$ on five seeds---suggestive but at the edge of
+what our sample resolves, and with the underlying mechanism
+(positional--channel orthogonalisation vs.\ positional subspace
+compression) not pinned down by the present data. On ETTh1 the
+per-channel-$W_k$ family again ties at the top, but the
+channel-as-token baseline (\textsc{cat}), which underperforms on the
+synthetic task, here posts the lowest mean NLL---with overlapping
+confidence intervals and indistinguishable accuracies, so we read it
+as the synthetic-benchmark gap closing rather than a clean win. A
+gram-matrix analysis shows the task loss drives channel projections
+to near-orthogonality without explicit regularisation, and learned
+norms are systematically larger for the outcome-relevant channels.
 Code: \url{https://github.com/OssiLehtinen/FDM-encoding}.
 \end{abstract}
 
@@ -189,12 +194,7 @@ AdamW optimiser, learning rate $3{\times}10^{-4}$ with cosine decay
 to $1\%$ of peak, weight decay $10^{-4}$, batch size 32, gradient clip
 1.0. Each configuration is run over 5 random seeds. Metrics are
 reported at the best validation NLL achieved during training (effective
-early stopping). All headline experiments use 300 epochs. The
-gram-matrix and encoding-space analyses
-(Sections~\ref{sec:results-gram}--\ref{sec:results-space}) were measured
-at a 100-epoch training point as a representative snapshot; the
-qualitative claims (near-orthogonality, driver/distractor norm gap)
-are stable across this and the converged regime.
+early stopping). All experiments use 300 epochs.
 
 \subsection{Datasets}
 
@@ -233,7 +233,7 @@ $d_{\text{model}}{=}64$, 300 epochs with cosine LR decay (the same
 budget used throughout the paper). Four encoders sit within seed std
 of each other at the top: \textsc{linear}, \textsc{sum-ortho},
 \textsc{mlp}, and \textsc{concat}. \textsc{linear} matches
-\textsc{sum-ortho} to four decimal places---the orthogonality penalty
+\textsc{sum-ortho} to three decimal places---the orthogonality penalty
 contributes nothing at convergence. The MLP stem's ${\sim}9{\times}$
 extra encoder parameters likewise provide no benefit. The only variant
 that pulls ahead is \textsc{linear-ppe}, which projects the sinusoidal
@@ -259,9 +259,14 @@ $\mathcal{O}((CT)^2)$ attention cost.}
 \end{figure}
 
 All encoders degrade as $C$ grows (channels $k \ge 4$ are distractors).
-The top tier (\textsc{linear}, \textsc{sum-ortho}, \textsc{concat}) is
-stable across $C \in \{4, 8, 16\}$. The gap to \textsc{sum} widens
-rather than narrows.
+The per-channel-$W_k$ family stays clustered at the top across
+$C \in \{4, 8, 16\}$. The gap to \textsc{sum} widens rather than
+narrows. One detail worth flagging: at $C{=}16$, \textsc{mlp} pulls
+ahead of the linear family (val NLL $2.221$ vs.\ $2.28$--$2.30$),
+mirroring the way \textsc{linear-ppe} pulls ahead at smaller $C$.
+With five seeds and the differences sitting at the seed-std boundary
+we do not read either as decisive; the point is that the top tier
+is narrow but its leader is not the same encoder at every $C$.
 
 \subsection{Model-width scaling}
 \label{sec:results-dmodel}
@@ -270,8 +275,10 @@ rather than narrows.
 
 Table~\ref{tab:dmodel} varies $d_{\text{model}}$ over $\{64, 128, 256\}$
 at $C{=}4$. The \textsc{sum} ceiling is sharp: $15{\times}$ more
-parameters move NLL by less than $0.02$. \textsc{concat} scales
-strongly to $d{=}128$ before mild overfitting at $d{=}256$.
+parameters move NLL by less than $0.005$. \textsc{concat}'s best NLL
+also degrades mildly as $d_{\text{model}}$ grows from $64$ to $256$
+($2.18 \to 2.33$), consistent with overfitting at larger widths on
+this dataset.
 
 \subsection{Gram-matrix analysis: spontaneous orthogonality}
 \label{sec:results-gram}
@@ -283,23 +290,24 @@ $(W_i, W_j)$ with $i \ne j$ at the end of training.
 
 \begin{table}[h]
 \centering
-\caption{Learned per-channel $W_k$ geometry ($C{=}4$, mean over 5 seeds).}
+\caption{Learned per-channel $W_k$ geometry ($C{=}4$, $300$ epochs,
+mean over 5 seeds).}
 \label{tab:gram}
 \begin{tabular}{lccc}
 \toprule
 encoder      & best val NLL & $\max_{i\ne j}|\cos(W_i,W_j)|$ & mean $|\cos|$ \\
 \midrule
-\textsc{linear}    & $2.4215$ & $0.152$ & $0.054$ \\
-\textsc{sum-ortho} & $2.4214$ & $0.058$ & $0.021$ \\
+\textsc{linear}    & $2.170$ & $0.082$ & $0.035$ \\
+\textsc{sum-ortho} & $2.170$ & $0.022$ & $0.010$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 Without any penalty the learned $W_k$ are already near-orthogonal (mean
-off-diagonal cosine $0.054$). The regulariser tightens this to $0.021$
-but does not improve downstream NLL. The task loss itself provides
-enough gradient pressure to separate the per-channel projections once
-they exist as free parameters.
+off-diagonal cosine $0.035$). The regulariser tightens this by another
+factor of ${\sim}3.5$ to $0.010$ but does not improve downstream NLL.
+The task loss itself provides enough gradient pressure to separate the
+per-channel projections once they exist as free parameters.
 
 \subsection{Encoding space allocation}
 \label{sec:results-space}
@@ -311,8 +319,9 @@ variance fractions $\text{Var}(W_k \cdot v_k) / \sum_j \text{Var}(W_j
 
 \begin{table}[h]
 \centering
-\caption{Encoding space allocation (mean over 5 seeds). Channels 0--3
-drive the outcome; the rest are distractors.}
+\caption{Encoding space allocation for \textsc{linear} (300 epochs,
+mean over 5 seeds). Channels 0--3 drive the outcome; the rest are
+distractors.}
 \label{tab:space}
 \begin{tabular}{lcccc}
 \toprule
@@ -320,22 +329,22 @@ drive the outcome; the rest are distractors.}
 \cmidrule(lr){2-3} \cmidrule(lr){4-5}
 & drivers (0--3) & distractors & drivers & distractors \\
 \midrule
-$C{=}8$  & $1.14$ & $0.71$ & $72.3\%$ & $27.7\%$ \\
-$C{=}16$ & $1.20$ & $0.74$ & $46.6\%$ & $53.4\%$ \\
+$C{=}8$  & $1.21$ & $0.55$ & $82.9\%$ & $17.1\%$ \\
+$C{=}16$ & $1.29$ & $0.61$ & $60.5\%$ & $39.5\%$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Driver channels receive ${\sim}1.6{\times}$ larger seed-averaged norms
-than distractors at both $C{=}8$ and $C{=}16$. The aggregate variance
-share at $C{=}8$ is $72\%$ for the four drivers; at $C{=}16$ the
-aggregate driver share is closer to half ($46.6\%$) because there are
-now twelve distractors, but the per-channel variance contribution is
-still larger for drivers ($\sim$$12\%$ each vs.\ $\sim$$4\%$ each).
-We do not report per-channel error bars on the norms, and the
-fine-grained ordering within drivers is descriptive only; the robust
-claim is the driver/distractor gap, which holds at both channel
-counts.
+Driver channels receive ${\sim}2.2{\times}$ larger seed-averaged norms
+than distractors at $C{=}8$ and ${\sim}2.1{\times}$ at $C{=}16$. The
+four drivers capture $83\%$ of the embedding variance at $C{=}8$ and
+$61\%$ at $C{=}16$, where the aggregate share is naturally diluted by
+having twelve distractors but the per-channel variance contribution
+remains markedly larger for drivers ($\sim$$15\%$ each vs.\
+$\sim$$3\%$ each). We do not report per-channel error bars on the
+norms, and the fine-grained ordering within drivers is descriptive
+only; the robust claim is the driver/distractor gap, which holds at
+both channel counts.
 
 \subsection{Channel identifiability via linear probing}
 \label{sec:results-probe}
@@ -344,7 +353,7 @@ counts.
 
 Closed-form ridge probes from the hidden state to the raw input show
 that all per-channel-$W_k$ encoders achieve $R^2 \approx 1.0$ at the
-input layer and $R^2 \ge 0.92$ at layer 3. \textsc{sum} collapses to
+input layer and $R^2 \ge 0.84$ at layer 3. \textsc{sum} collapses to
 $R^2 \approx 0.24$ at every depth.
 
 \subsection{Channel masking}
@@ -393,15 +402,15 @@ resolution of 20 epochs. Cost is per-epoch wall time normalised to
 \toprule
 encoder & best NLL & epoch to NLL $+0.05$ & relative cost \\
 \midrule
-\textsc{linear}     & $2.169$ & $\sim$150 & $1.00\times$ \\
-\textsc{sum-ortho}  & $2.170$ & $\sim$150 & $1.06\times$ \\
-\textsc{mlp}        & $2.170$ & $\sim$150 & $1.00\times$ \\
-\textsc{concat}     & $2.183$ & $\sim$150 & $0.88\times$ \\
-\textsc{linear-ppe} & $2.120$ & $\sim$150 & $0.94\times$ \\
+\textsc{linear}     & $2.170$ & $\sim$152 & $1.00\times$ \\
+\textsc{sum-ortho}  & $2.170$ & $\sim$156 & $1.04\times$ \\
+\textsc{mlp}        & $2.171$ & $\sim$144 & $1.01\times$ \\
+\textsc{concat}     & $2.183$ & $\sim$152 & $1.00\times$ \\
+\textsc{linear-ppe} & $2.116$ & $\sim$148 & $0.99\times$ \\
 \midrule
 \textsc{sum}        & $3.252$ & $\sim$20 (plateau) & $1.00\times$ \\
-\textsc{ci}         & $3.053$ & $\sim$20 (plateau) & $3.0\times$ \\
-\textsc{cat}        & $2.371$ & $\sim$184 & $6.5\times$ \\
+\textsc{ci}         & $3.054$ & $\sim$20 (plateau) & $2.3\times$ \\
+\textsc{cat}        & $2.360$ & $\sim$180 & $5.2\times$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -416,21 +425,38 @@ just at the end ($2.225$ vs.\ $2.271$ NLL at epoch 100), so it is not
 a slow-burn late-training artefact.
 
 \textsc{ci} and \textsc{cat} pay substantial wall-clock costs from
-their architectures, not their input encoders: $\sim$3$\times$ at
-$C{=}4$ for \textsc{ci} (scaling with $C$ to ${\sim}14\times$ at
-$C{=}16$) and $\sim$6.5$\times$ for \textsc{cat} (scaling with $C^2T^2$
-to ${\sim}24\times$ at $C{=}8$). \textsc{cat} also converges to its
-worse ceiling later than the top tier reaches its ceiling.
+their architectures, not their input encoders: $\sim$2.3$\times$
+\textsc{linear} at $C{=}4$ for \textsc{ci} (scaling to ${\sim}8\times$
+at $C{=}16$) and $\sim$5$\times$ at $C{=}4$ for \textsc{cat} (scaling
+with $C^2T^2$ to ${\sim}17\times$ at $C{=}8$). On the synthetic
+benchmark \textsc{cat} also converges to its worse ceiling later than
+the top tier reaches its ceiling.
 
 \subsection{Real-data validation: ETTh1}
 \label{sec:results-etth1}
 
 \input{tables/etth1.tex}
 
-Table~\ref{tab:etth1} confirms the synthetic ordering on ETTh1. The
-three per-channel-$W_k$ encoders (\textsc{linear}, \textsc{sum-ortho},
-\textsc{concat}) tie at the top; \textsc{mlp} joins within noise.
-\textsc{sum} fails catastrophically (NLL near $\ln 32 \approx 3.47$).
+Table~\ref{tab:etth1} mostly confirms the synthetic ordering on
+ETTh1: the per-channel-$W_k$ family (\textsc{linear}, \textsc{sum-ortho},
+\textsc{concat}, \textsc{mlp}) cluster within seed std of each other,
+\textsc{ci} underperforms, and \textsc{sum} fails catastrophically
+(NLL near $\ln 32 \approx 3.47$).
+
+One genuine difference from the synthetic ranking: \textsc{cat}, which
+sits in the middle of the synthetic table, here posts the lowest mean
+NLL ($0.541$). We do not want to overinterpret this. The NLL
+confidence interval barely separates from \textsc{concat}/\textsc{linear}
+(\textsc{cat}'s upper bound $0.552$ versus \textsc{concat}'s lower
+bound $0.550$), and best-bin accuracies across the top tier are
+indistinguishable ($0.77$--$0.79$ with seed std ${\sim}0.01$).
+Read carefully, the finding is not that channel-as-token wins on real
+data, but that its synthetic-benchmark disadvantage disappears. A
+plausible reading is that ETTh1's seven variates are all genuinely
+informative measurements of the same physical system, so the
+fine-grained cross-variate attention \textsc{cat} enables can pay,
+whereas the synthetic benchmark's four drivers plus distractors does
+not reward that extra modelling capacity.
 
 % ======================================================================
 \section{Discussion}
@@ -440,9 +466,11 @@ three per-channel-$W_k$ encoders (\textsc{linear}, \textsc{sum-ortho},
 Stacking per-channel projections $W_k$ and summing is
 \texttt{nn.Linear(C, $d_{\text{model}}$)}---the most obvious default.
 Our contribution is not proposing it but auditing it: at matched
-parameter budget, it matches every alternative (block-partitioned,
-orthogonality-regularised, nonlinear, channel-independent,
-channel-as-token). Only the shared-projection \textsc{sum} loses.
+parameter budget, it matches every alternative
+(block-partitioned, orthogonality-regularised, nonlinear,
+channel-independent, channel-as-token) on the synthetic benchmark,
+and ties at the top of the per-channel-$W_k$ tier on ETTh1. Only the
+shared-projection \textsc{sum} consistently loses.
 
 \paragraph{What fails about the shared-scalar baseline.}
 \textsc{sum} combines a shared $W$ with a small additive $e_k$. Under
@@ -451,8 +479,8 @@ is not summation---\textsc{linear} also sums---but the shared
 projection, which cannot represent distinct channel directions.
 
 \paragraph{Orthogonality is spontaneous.}
-\textsc{linear}'s $W_k$ reach mean off-diagonal cosine ${\approx}0.05$
-with no penalty; the regulariser tightens to ${\approx}0.02$ without
+\textsc{linear}'s $W_k$ reach mean off-diagonal cosine ${\approx}0.035$
+with no penalty; the regulariser tightens to ${\approx}0.010$ without
 changing NLL. The task loss provides the gradient pressure.
 
 \paragraph{Nonlinearity is redundant.}
@@ -460,12 +488,13 @@ changing NLL. The task loss provides the gradient pressure.
 the same NLL. A linear projection of the channel vector is sufficient.
 
 \paragraph{Importance weighting is automatic.}
-At $C{=}8$, driver channels get ${\sim}1.6{\times}$ larger
-seed-averaged $\|W_k\|$ norms and a clear majority of the embedding
-variance; the same ratio holds at $C{=}16$. We do not have per-channel
-error bars, so the fine-grained ordering within drivers is descriptive
-only, but the driver/distractor gap is robust across two channel
-counts.
+At $C{=}8$, driver channels get ${\sim}2.2{\times}$ larger
+seed-averaged $\|W_k\|$ norms and $83\%$ of the embedding variance;
+at $C{=}16$ the norm ratio is ${\sim}2.1{\times}$ and per-channel
+variance contributions are ${\sim}4{\times}$ larger for drivers than
+for distractors. The driver/distractor gap is robust across two
+channel counts; the fine-grained ordering within drivers is
+descriptive only.
 
 \paragraph{Projected positional encoding: small effect, unsettled mechanism.}
 At $C{=}4$ on five seeds, \textsc{linear-ppe} sits ${\sim}0.05$ NLL
@@ -485,12 +514,20 @@ under \textsc{linear} vs.\ \textsc{linear-ppe}---we have not run.
 
 \paragraph{Architectural baselines.}
 \textsc{ci} and \textsc{cat} give each channel nominally more capacity
-but underperform at matched parameters. \textsc{ci}'s bottleneck is the
-head combining $C$ streams; \textsc{cat} pays $\mathcal{O}((CT)^2)$
-attention for no gain on this task. The wall-clock cost is
-substantial---${\sim}14{\times}$ \textsc{linear} at $C{=}16$ for
-\textsc{ci}, ${\sim}24{\times}$ at $C{=}8$ for \textsc{cat}---and
-buys a worse ceiling.
+at substantial wall-clock cost---${\sim}8{\times}$ \textsc{linear} at
+$C{=}16$ for \textsc{ci}, ${\sim}17{\times}$ at $C{=}8$ for
+\textsc{cat}. \textsc{ci} underperforms throughout: its bottleneck is
+the head combining $C$ streams. \textsc{cat} is more interesting.
+On the synthetic benchmark, where drivers and distractors are mixed,
+it sits well below the per-channel-$W_k$ tier ($2.37$ vs.\ ${\sim}2.17$
+NLL at $C{=}4$). On ETTh1, where all seven variates are informative
+measurements of one physical system, that gap closes and \textsc{cat}
+posts the lowest mean NLL---though its confidence interval barely
+separates from the next-best encoder and best-bin accuracies in the
+top tier are indistinguishable. We read this as a domain-dependent
+split rather than a clean win: \textsc{cat}'s cross-variate attention
+appears to pay only when the channels share structure worth
+attending to.
 
 \paragraph{No convergence-time penalty for involved encoders.}
 \textsc{mlp}, \textsc{sum-ortho}, and \textsc{linear-ppe} reach within
@@ -501,7 +538,7 @@ backbone, encoder choice does not change either the convergence
 schedule or compute budget.
 
 \paragraph{LayerNorm preserves channel separation.}
-Linear probes at layer 3 recover each channel to $R^2 \ge 0.92$;
+Linear probes at layer 3 recover each channel to $R^2 \ge 0.84$;
 LayerNorm rescales but does not linearly mix coordinates.
 
 \paragraph{Reading for non-numerical inputs.}
@@ -536,10 +573,10 @@ need a probe-based analog.
       ETTh1 at $d_{\text{model}}{=}56$, $C{=}7$. The $d_{\text{model}}$
       sweep covers only \textsc{sum} and \textsc{concat}. At larger
       scales the overfitting dynamics may change.
-\item \textsc{cat} is skipped at $C{=}16$ (synthetic) and single-seed
-      at $C{=}7$ (ETTh1) for compute reasons.
-\item \textsc{linear-ppe} was tested at $C \in \{4, 16\}$; the
-      300-epoch comparison is at $C{=}4$ only.
+\item \textsc{cat} is skipped at $C{=}16$ on the synthetic benchmark
+      for compute reasons ($\mathcal{O}((CT)^2)$ attention).
+\item \textsc{linear-ppe} was tested at $C \in \{4, 8, 16\}$ on the
+      synthetic benchmark and at $C{=}7$ on ETTh1.
 \item Five seeds per configuration; marginal differences in the top
       tier may need more seeds to resolve.
 \end{itemize}
@@ -577,14 +614,18 @@ more elaborate encoder we tested. The task loss drives the channel
 projections to near-orthogonality, and learned norms are larger for
 outcome-relevant channels. A shared-scalar projection has a
 capacity-independent ceiling. Nonlinearity, block partitioning,
-orthogonality penalties, channel-independent and channel-as-token
-architectures---none improve on the bare linear layer within seed
-noise. Projecting the sinusoidal positional encoding through a learned
-linear layer (\textsc{linear-ppe}) shows a small advantage at $C{=}4$
-that is at the edge of what five seeds resolve and whose mechanism we
-cannot pin down here. The practical recommendation is simple: use
-\texttt{nn.Linear(C, $d_{\text{model}}$)} for the channel encoding,
-and spend the complexity budget elsewhere.
+orthogonality penalties, and channel-independent architectures do not
+improve on the bare linear layer within seed noise. Two variants
+deserve a footnote rather than a full carve-out: \textsc{linear-ppe}
+shows a small synthetic-benchmark advantage at $C{=}4$ that is at the
+edge of what five seeds resolve, and channel-as-token (\textsc{cat})
+posts the lowest mean NLL on ETTh1 with overlapping confidence
+intervals and indistinguishable accuracies---a domain-dependent
+narrowing of the synthetic gap, not a robust win. The practical
+recommendation is simple: use \texttt{nn.Linear(C, $d_{\text{model}}$)}
+for the channel encoding, and spend the complexity budget elsewhere
+unless your channels are dense, informative measurements of a single
+system, in which case \textsc{cat} is worth the wall-clock cost.
 
 \bibliographystyle{plainnat}
 \begin{thebibliography}{9}
