@@ -9,13 +9,14 @@ RoPE-style sinusoidal carrier. Blocks are concatenated rather than summed,
 so channel identity is preserved by construction.
 
 This repo contains:
-- A PyTorch implementation of three input encoders (`sum`, `concat`, `fdm`)
-  sharing the same transformer backbone.
+- A PyTorch implementation of four input encoders (`sum`, `concat`, `fdm`,
+  `fdm-learn`) sharing the same transformer backbone.
 - A synthetic multi-signal benchmark where the outcome is a lagged,
   non-linear function of several channels, binned for a categorical
   generative head.
-- A sweep runner, a linear-probe channel-recovery experiment, a test-time
-  channel-masking experiment, and a plotting script.
+- A sweep runner, a `d_model` scaling study, a carrier-band grid search,
+  a linear-probe channel-recovery experiment, a test-time channel-masking
+  experiment, and a plotting script.
 - A LaTeX manuscript (`paper/`) with all tables and figures regenerated
   from experiment outputs.
 
@@ -49,6 +50,40 @@ raw input, per channel):
 Block partitioning alone (`concat`) accounts for ~70–80% of the gain over
 `sum`; the carrier adds the remainder.
 
+### Scaling with model width
+
+At C=4 the story changes with `d_model`:
+
+| d_model | total params | sum          | concat        | fdm           |
+| ------- | ------------ | ------------ | ------------- | ------------- |
+| 64      | 152K         | 3.280 / 0.088 | 3.125 / 0.116 | **3.061 / 0.123** |
+| 128     | 600K         | 3.265 / 0.091 | **2.797 / 0.155** | 2.963 / 0.135 |
+| 256     | 2.38M        | 3.265 / 0.089 | **2.704 / 0.162** | 2.913 / 0.142 |
+
+(val NLL / val acc; bold = best per row.)
+
+Three takeaways:
+- **`sum` is structurally capped**: 15× more parameters barely move it;
+  no amount of width fixes rank-deficient encoding.
+- **`concat` scales strongly.** Block partitioning compounds with width.
+- **`fdm` vs `concat` ranking flips at d_model ≥ 128.** The fixed carrier is
+  a useful inductive bias at small `d_block` (=16) and a constraint at
+  large `d_block` (≥32), where a learned projection has enough room to
+  discover whatever temporal structure it needs.
+
+### Is the FDM gap at large d_model a frequency-choice issue?
+
+Two controls at d_model=128:
+
+- **Learnable `ω_k`**: plumbs as a Parameter with gradients, but drifts
+  <1% over 12 epochs and changes metrics by <10⁻³. The optimizer can
+  barely move four scalar frequencies against the much stronger gradient
+  signal flowing into Q/K/V/FFN weights.
+- **Grid search over 11 fixed (ω_min, ω_max) bands**: best NLL is
+  **2.933** for ω ∈ [0.03, 0.5] (matching signal bandwidth), beating the
+  default 2.963 by ~0.03 nats but still **0.14 nats behind concat
+  (2.797)**. The gap is structural, not a hyperparameter miss.
+
 ---
 
 ## Quick start
@@ -57,11 +92,15 @@ Block partitioning alone (`concat`) accounts for ~70–80% of the gain over
 uv sync
 # single-encoder comparison at C=4
 uv run python -m fft_encode.train --epochs 10
-# full paper sweep: 3 encoders × {4,8,16} channels × 3 seeds, plus masking
+# main sweep: 4 encoders × {4,8,16} channels × 3 seeds, plus masking
 uv run python -m fft_encode.experiments --seeds 3 --epochs 12 --out results.json
 # linear-probe channel recovery at C=4
 uv run python -m fft_encode.probe --epochs 12 --out probe_results.json
-# regenerate scaling figure
+# d_model scaling {64,128,256} including fdm-learn
+uv run python -m fft_encode.scale_dmodel --seeds 3 --epochs 12 --out scale_dmodel.json
+# carrier-band grid search at d_model=128
+uv run python -m fft_encode.carrier_grid --seeds 3 --epochs 12 --out carrier_grid.json
+# regenerate paper figures
 uv run python -m fft_encode.plot
 ```
 
@@ -131,20 +170,24 @@ band — the FDM gain is not a trivial resonance with the data.
 
 ```
 fft_encode/
-  data.py         synthetic multi-signal dataset
-  encodings.py    SumEncoding, ConcatEncoding, FDMChannelEncoding
-  model.py        causal transformer + categorical head
-  train.py        single-run trainer
-  experiments.py  main sweep (table 1 + scaling + channel mask)
-  probe.py        linear-probe channel recovery
-  plot.py         scaling figure for the paper
+  data.py          synthetic multi-signal dataset
+  encodings.py     SumEncoding, ConcatEncoding, FDMChannelEncoding
+  model.py         causal transformer + categorical head
+  train.py         single-run trainer
+  experiments.py   main sweep (table 1 + C scaling + channel mask)
+  probe.py         linear-probe channel recovery
+  scale_dmodel.py  d_model scaling, incl. fdm-learn (learnable ω_k)
+  carrier_grid.py  grid search over (ω_min, ω_max) at d_model=128
+  plot.py          scaling figures for the paper
 paper/
-  main.tex        manuscript
-  tables/*.tex    generated tables
-  figures/*.pdf   generated figures
-  main.pdf        built manuscript
-results.json        full experiment output
+  main.tex         manuscript
+  tables/*.tex     generated tables
+  figures/*.pdf    generated figures
+  main.pdf         built manuscript
+results.json        main sweep output
 probe_results.json  probe output
+scale_dmodel.json   d_model sweep output
+carrier_grid.json   carrier grid search output
 ```
 
 ---

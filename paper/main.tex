@@ -51,8 +51,15 @@ perfectly at the input layer (per-channel $R^2 \approx 1.0$) and largely
 through the network (mean $R^2 \approx 0.96$ at the final layer); concat
 recovers nearly as well at the input but degrades faster through attention;
 naive summation collapses recoverability to $R^2 \approx 0.24$ at every
-layer. Full training, probe, and plotting scripts accompany the paper
-(\texttt{<repository>}).
+layer. A width-scaling study ($d_{\text{model}} \in \{64, 128, 256\}$,
+parameter counts from $152\text{K}$ to $2.4\text{M}$) reveals a regime
+change: \textsc{sum} is essentially capacity-insensitive (no amount of
+width fixes rank-deficient encoding), \textsc{concat} scales strongly, and
+\textsc{fdm} scales more weakly---the ranking flips and \textsc{concat}
+beats \textsc{fdm} at $d_{\text{model}} \ge 128$. The fixed carrier is a
+useful bias at low capacity and a constraint at high capacity. Full
+training, probe, and plotting scripts accompany the paper
+(\url{https://github.com/OssiLehtinen/FDM-encoding}).
 \end{abstract}
 
 \section{Introduction}
@@ -283,6 +290,73 @@ at $C{=}16$ where $d_{\text{block}}{=}4$ leaves only two sin/cos pairs per
 block---the frequency ladder is too short for the carrier to encode much
 intra-channel position---but the ordering is preserved at every $C$.
 
+\subsection{Scaling with model width}
+\label{sec:results-dmodel}
+
+\input{tables/dmodel.tex}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.9\textwidth]{figures/dmodel_scaling.pdf}
+\caption{Scaling with $d_{\text{model}}$ at $C{=}4$. \textsc{sum} is
+essentially flat: extra width buys nothing because the bottleneck is
+structural, not representational. \textsc{concat} and \textsc{fdm} both
+improve, but \textsc{concat} improves more---the fixed carrier becomes a
+constraint once the per-channel block is wide enough to learn its own
+temporal structure.}
+\label{fig:dmodel}
+\end{figure}
+
+Table~\ref{tab:dmodel} and Figure~\ref{fig:dmodel} vary $d_{\text{model}}$
+over $\{64, 128, 256\}$ with $d_{\text{ff}} = 4\,d_{\text{model}}$ and a
+fixed 4-head attention (so $d_{\text{head}}$ grows with $d_{\text{model}}$).
+Three observations stand out.
+
+\emph{\textsc{sum} is structurally capped.} Total parameter count grows
+$15\times$ across the sweep, yet \textsc{sum}'s validation NLL changes by
+less than $0.02$. This is perhaps the cleanest evidence that the naive
+summing recipe is not a capacity problem: no amount of extra width fixes a
+rank-deficient encoding. The network cannot demultiplex what was never
+demultiplexable.
+
+\emph{\textsc{concat} scales strongly.} NLL drops from $3.125$ to $2.704$
+and accuracy climbs from $0.116$ to $0.162$. Once each channel owns a
+block, a wider block lets the model learn richer per-channel dynamics and
+the gap to \textsc{sum} widens with scale.
+
+\emph{\textsc{fdm} and \textsc{concat} swap rankings.} At
+$d_{\text{block}}{=}16$ ($d_{\text{model}}{=}64$, $C{=}4$) the carrier is a
+useful inductive bias and \textsc{fdm} wins. At $d_{\text{block}}\ge 32$
+the carrier becomes a constraint: \textsc{concat}'s learned projection has
+enough room to discover whatever intra-channel temporal structure the task
+actually needs, while \textsc{fdm} spends its block dimensions on a fixed
+sinusoidal ladder that may not align with the signal's informative scales.
+This suggests a practical rule: use \textsc{fdm} when $d_{\text{block}}$
+is small (few heads/narrow model per channel); use \textsc{concat} when
+$d_{\text{block}}$ is comfortably large.
+
+\paragraph{Is it the frequency choice?}
+We hypothesised the \textsc{fdm} ceiling at $d_{\text{model}}{\ge}128$
+might be due to a bad carrier-band choice, and ran two controls at
+$d_{\text{model}}{=}128$.
+(i)~Making $\{\omega_k\}$ \emph{learnable} parameters (initialised at the
+log-spaced defaults) changes NLL and accuracy by less than $10^{-3}$ at
+every $d_{\text{model}}$ we tested. Diagnostics show this is not a plumbing
+bug: the omegas are Parameters in the optimiser and do receive gradients,
+but over 12 epochs they drift by $<1\%$ of initialisation under standard
+AdamW---the loss gradient w.r.t.\ four scalar frequencies is much weaker
+than the gradient into the surrounding Q/K/V/FFN weights.
+(ii)~A grid search over 11 fixed carrier bands $(\omega_{\min}, \omega_{\max})$,
+spanning $[0.03, 0.5]$\,rad/sample (matching the signal's own bandwidth)
+through $[10, 100]$\,rad/sample (well above it), yields a best NLL of
+$2.933 \pm 0.015$ at the signal-matched band---better than the default
+$2.963 \pm 0.016$ by $\sim$0.03 nats, but still $0.14$ nats behind
+\textsc{concat}'s $2.797 \pm 0.019$. \emph{No fixed carrier band closes
+the gap.} The limitation is structural: amplitude-modulating any fixed
+per-position template has fewer degrees of freedom than a learned
+$W_k v_k + b_k$ once $d_{\text{block}}$ is large enough that learning a
+good projection is easy.
+
 \subsection{Channel identifiability via linear probing}
 \label{sec:results-probe}
 
@@ -361,9 +435,13 @@ to widen the gap further.
       to make channel identity matter; on tasks where channel identity is
       truly redundant (e.g.\ exchangeable feature sets) sum may not be
       penalized.
-\item We test only modest scales ($d_{\text{model}}{=}64$, 3 layers).
-      Whether the gap closes at larger scale---once the network has the
-      capacity to learn implicit demultiplexing---is open.
+\item We test scales up to $d_{\text{model}}{=}256$ ($\approx\!2.4\text{M}$
+      parameters) on a small synthetic task. \textsc{sum}'s stagnation at
+      this range is striking, but the block-partitioned encoders' rankings
+      may shift further at model sizes or task complexities we did not
+      explore; in particular, whether \textsc{fdm}'s inductive bias pays
+      off on tasks with genuinely periodic or multi-timescale signals
+      remains open.
 \item FDM requires $C \mid d_{\text{model}}$. Variable-channel inputs need
       reservation of full capacity, which is wasteful for long-tail
       modality counts.

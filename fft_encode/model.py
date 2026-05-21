@@ -83,6 +83,9 @@ class SignalTransformer(nn.Module):
 def build_model(kind: str, n_channels: int, d_model: int, n_bins: int, **kw) -> SignalTransformer:
     if kind == "fdm":
         enc = FDMChannelEncoding(n_channels=n_channels, d_model=d_model)
+    elif kind == "fdm-learn":
+        enc = FDMChannelEncoding(n_channels=n_channels, d_model=d_model,
+                                 learnable_omega=True)
     elif kind == "sum":
         enc = SumEncoding(n_channels=n_channels, d_model=d_model)
     elif kind == "concat":
