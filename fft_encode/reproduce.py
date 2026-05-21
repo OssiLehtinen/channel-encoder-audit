@@ -25,6 +25,11 @@ Stages (default: all)
     main_largen top-tier encoders at C=16 with 10x training data, to
                 test whether the C=16 encoder ranking persists when
                 the model is no longer data-limited
+    pospro_geometry  positional projection geometry: effective rank of
+                the positional basis P and principal angles between
+                span(W_k) and span(P), for linear vs linear-ppe.
+                Discriminates the compression vs orthogonalisation
+                mechanism question for linear-ppe.
 
 Outputs
 -------
@@ -38,6 +43,7 @@ Outputs
     <out>/bias.json
     <out>/geom_largen.json
     <out>/main_largen.json
+    <out>/pospro_geometry.json
     <out>/summary.txt        human-readable aggregate of everything
 """
 
@@ -70,7 +76,8 @@ ENCODERS_PROBE = ["sum", "linear", "sum-ortho", "mlp", "linear-ppe", "concat"]
 ENCODERS_DMODEL = ["sum", "concat"]
 
 ALL_STAGES = ["main", "dmodel", "geometry", "probe", "mask", "etth1",
-              "convergence", "bias", "geom_largen", "main_largen"]
+              "convergence", "bias", "geom_largen", "main_largen",
+              "pospro_geometry"]
 
 
 def header(s: str) -> None:
@@ -411,6 +418,101 @@ def stage_main_largen(args, device) -> list:
 
 
 # ---------------------------------------------------------------------------
+# Stage 7d: positional-projection geometry (linear-ppe mechanism probe)
+# ---------------------------------------------------------------------------
+
+def _principal_angles(A: np.ndarray, B: np.ndarray) -> np.ndarray:
+    """Principal angles (in radians, sorted increasing) between span(A)
+    and span(B), where A is (n_A, d) and B is (n_B, d). Returns
+    min(rank(A), rank(B)) angles. Implementation: QR-decompose A^T and
+    B^T to orthonormal bases, then SVD of the inner-product matrix
+    gives cosines of the principal angles."""
+    Q_A, _ = np.linalg.qr(A.T)
+    Q_B, _ = np.linalg.qr(B.T)
+    sigmas = np.linalg.svd(Q_A.T @ Q_B, compute_uv=False)
+    return np.arccos(np.clip(sigmas, -1.0, 1.0))
+
+
+def stage_pospro_geometry(args, device) -> dict:
+    """Discriminator for the linear-ppe mechanism question. Trains
+    linear and linear-ppe at C=4, d=64, args.pospro_seeds seeds.
+    Extracts W (per-channel projection rows) and P (the effective
+    positional basis: fixed sinusoid for linear, learned W_pos @ p(t)
+    + b_pos for linear-ppe). Computes effective rank of P (entropy and
+    99%-energy) and principal angles between span(W) and span(P).
+
+    Predictions:
+      Compression hypothesis: P_ppe has lower effective rank than
+        P_linear; principal angles are similar.
+      Orthogonalisation hypothesis: effective ranks similar; min
+        principal angle between span(W) and span(P) is larger for
+        linear-ppe."""
+    header(f"pospro_geometry: linear vs linear-ppe at C=4, "
+           f"{args.pospro_seeds} seeds")
+    out: dict = {"linear": [], "linear_ppe": []}
+    for enc, key in [("linear", "linear"), ("linear-ppe", "linear_ppe")]:
+        for s in range(args.pospro_seeds):
+            cfg = RunCfg(encoder=enc, C=4, seed=s,
+                         epochs=args.epochs, n_series=args.n_series)
+            t0 = time.time()
+            r, model, _ = train_and_trace(
+                cfg, device, log_every=args.log_every, return_model=True)
+
+            # Extract W and the effective positional basis P.
+            W = model.encoder.W.detach().cpu().numpy()              # (C, d)
+            T = cfg.T
+            pos_fixed = model.encoder.pos[:T].cpu().numpy()         # (T, d)
+            if enc == "linear-ppe":
+                W_pos = model.encoder.pos_proj.weight.detach().cpu().numpy()
+                b_pos = model.encoder.pos_proj.bias.detach().cpu().numpy()
+                # nn.Linear: out = in @ W_pos.T + b_pos
+                P = pos_fixed @ W_pos.T + b_pos
+            else:
+                P = pos_fixed
+
+            # Effective rank of P (entropy of normalised squared singular values).
+            sP = np.linalg.svd(P, compute_uv=False)
+            sP_sq = sP ** 2
+            pi = sP_sq / sP_sq.sum()
+            entropy_rank = float(np.exp(-(pi * np.log(pi + 1e-30)).sum()))
+            cumsum = np.cumsum(sP_sq) / sP_sq.sum()
+            rank_99 = int((cumsum < 0.99).sum() + 1)
+
+            # Principal angles span(W) vs span(P).
+            angles = _principal_angles(W, P)
+            angles_deg = np.degrees(angles)
+
+            # Fraction of P's energy in span(W). High = position lives inside
+            # the channel subspace (bad for separation); low = position is
+            # orthogonal to channels (good).
+            Q_W, _ = np.linalg.qr(W.T)  # (d, C) basis for span(W)
+            P_proj_W = P @ Q_W          # (T, C)
+            frac_in_span_W = float(
+                (P_proj_W ** 2).sum() / (P ** 2).sum())
+
+            entry = dict(
+                encoder=enc, seed=s,
+                best_val_nll=r["best_val_nll"],
+                P_singular_values=sP.tolist(),
+                P_entropy_rank=entropy_rank,
+                P_rank_99=rank_99,
+                principal_angles_deg=angles_deg.tolist(),
+                min_principal_angle_deg=float(angles_deg.min()),
+                mean_principal_angle_deg=float(angles_deg.mean()),
+                frac_P_energy_in_span_W=frac_in_span_W,
+            )
+            out[key].append(entry)
+            print(f"  [{enc:>10} s={s}] "
+                  f"nll={r['best_val_nll']:.4f} "
+                  f"eff_rank={entropy_rank:.2f} "
+                  f"rank_99={rank_99} "
+                  f"min_angle={angles_deg.min():.1f}° "
+                  f"frac(P in span W)={frac_in_span_W:.3f} "
+                  f"({time.time()-t0:.1f}s)", flush=True)
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Stage 7: channel-bias ablation
 # ---------------------------------------------------------------------------
 
@@ -604,6 +706,31 @@ def write_summary(out_dir: str, results: dict) -> None:
                          f"{np.mean(nlls):.4f}±{np.std(nlls):.4f}  "
                          f"{np.mean(accs):.3f}±{np.std(accs):.3f}")
 
+    if "pospro_geometry" in results:
+        lines.append("\n" + "=" * 70)
+        lines.append("POSITIONAL PROJECTION GEOMETRY "
+                     "(linear vs linear-ppe at C=4)")
+        lines.append("=" * 70)
+        for label, key in [("linear", "linear"),
+                           ("linear-ppe", "linear_ppe")]:
+            rs = results["pospro_geometry"][key]
+            if not rs:
+                continue
+            er = np.array([r["P_entropy_rank"] for r in rs])
+            r99 = np.array([r["P_rank_99"] for r in rs])
+            mna = np.array([r["min_principal_angle_deg"] for r in rs])
+            mea = np.array([r["mean_principal_angle_deg"] for r in rs])
+            fps = np.array([r["frac_P_energy_in_span_W"] for r in rs])
+            lines.append(
+                f"  {label:>10}: "
+                f"eff_rank(P) = {er.mean():.2f}±{er.std(ddof=1):.2f}, "
+                f"rank_99 = {r99.mean():.1f}, "
+                f"min∠(W,P) = {mna.mean():.1f}°±{mna.std(ddof=1):.1f}°, "
+                f"mean∠ = {mea.mean():.1f}°, "
+                f"P-energy-in-span(W) = {fps.mean():.3f}±"
+                f"{fps.std(ddof=1):.3f}"
+            )
+
     if "main_largen" in results:
         lines.append("\n" + "=" * 70)
         lines.append("MAIN SWEEP AT LARGE N (top-tier encoders, "
@@ -715,6 +842,9 @@ def main() -> None:
                         "(default: 5120 = 10x the main-sweep N=512)")
     p.add_argument("--main-largen-seeds", type=int, default=5,
                    help="seed count for the main_largen stage (default: 5)")
+    p.add_argument("--pospro-seeds", type=int, default=5,
+                   help="seed count for the pospro_geometry stage "
+                        "(default: 5)")
     p.add_argument("--stages", nargs="+", choices=ALL_STAGES,
                    default=ALL_STAGES,
                    help="which stages to run (default: all)")
@@ -782,6 +912,12 @@ def main() -> None:
         with open(os.path.join(args.out, "main_largen.json"), "w") as f:
             json.dump(mln, f, indent=2)
 
+    if "pospro_geometry" in args.stages:
+        pg = stage_pospro_geometry(args, device)
+        results["pospro_geometry"] = pg
+        with open(os.path.join(args.out, "pospro_geometry.json"), "w") as f:
+            json.dump(pg, f, indent=2)
+
     if "convergence" in args.stages:
         # Convergence requires main traces. If `main` wasn't run this session,
         # try loading from disk so the stage still works.
@@ -807,6 +943,7 @@ def main() -> None:
         "convergence": "convergence.json", "bias": "bias.json",
         "geom_largen": "geom_largen.json",
         "main_largen": "main_largen.json",
+        "pospro_geometry": "pospro_geometry.json",
     }
     for key, fname in _STAGE_FILES.items():
         if key in results:

@@ -123,6 +123,12 @@ ETTh1 (real data, 7 variates, d_model=56)
    sum-ortho  0.5716±0.0218  0.787±0.008
 
 ======================================================================
+POSITIONAL PROJECTION GEOMETRY (linear vs linear-ppe at C=4)
+======================================================================
+      linear: eff_rank(P) = 7.59±0.00, rank_99 = 22.0, min∠(W,P) = 0.0°±0.0°, mean∠ = 0.0°, P-energy-in-span(W) = 0.032±0.005
+  linear-ppe: eff_rank(P) = 9.37±0.36, rank_99 = 19.2, min∠(W,P) = 0.0°±0.0°, mean∠ = 0.0°, P-energy-in-span(W) = 0.007±0.001
+
+======================================================================
 MAIN SWEEP AT LARGE N (top-tier encoders, data-rich regime)
 ======================================================================
         concat  C=16  N=5120  nll=1.8590±0.0104  acc=0.339±0.003  (n=5)

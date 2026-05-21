@@ -51,11 +51,13 @@ paired $p \in \{0.0003, 0.008\}$, 5/5 favouring \textsc{mlp}); the
 lead survives $10\times$ data ($N{=}5120$, 5/5, $p \in \{0.0003,
 0.018\}$) but shrinks roughly five-fold to ${\sim}0.014$--$0.025$
 NLL, indicating that the data-limited regime amplifies the inter-encoder
-gaps without inverting them. The underlying mechanism for
-\textsc{linear-ppe} is not measured directly, and the $C$-dependence
-is in fact inconsistent with the naive form of either reading
-(orthogonalisation, compression), since both would predict the gap
-to grow with $C$ under fixed $d_{\text{model}}$. On ETTh1 the
+gaps without inverting them. A direct geometric measurement on
+trained models shows the \textsc{linear-ppe} mechanism is
+positional--channel orthogonalisation rather than positional subspace
+compression: the fraction of the positional basis's energy lying in
+the channel subspace $\mathrm{span}(W_k)$ drops $\sim$$4.5\times$
+under \textsc{linear-ppe} ($3.2\% \to 0.7\%$), while $P$'s effective
+rank \emph{rises} ($7.6 \to 9.4$). On ETTh1 the
 per-channel-$W_k$ family again ties at the top, but the
 channel-as-token baseline (\textsc{cat}), which underperforms on the
 synthetic task, here posts the lowest mean NLL---with overlapping
@@ -116,9 +118,11 @@ subspaces and scales their norms larger for outcome-relevant channels;
 and (iv)~the encoder landscape is mostly flat but not perfectly so
 under paired-difference analysis: at $C{=}4$, a projected positional
 encoding (\textsc{linear-ppe}) gains ${\sim}0.054$ NLL over
-\textsc{linear} (paired $p{=}0.009$, 5/5); at $C{=}16$ a two-layer
-MLP encoder gains ${\sim}0.06$--$0.12$ NLL over the linear family
-(paired $p \in \{0.0003, 0.008\}$, 5/5); on ETTh1
+\textsc{linear} (paired $p{=}0.009$, 5/5), with a direct geometric
+measurement showing the mechanism is positional--channel
+orthogonalisation rather than positional subspace compression; at
+$C{=}16$ a two-layer MLP encoder gains ${\sim}0.06$--$0.12$ NLL over
+the linear family (paired $p \in \{0.0003, 0.008\}$, 5/5); on ETTh1
 channel-as-token (\textsc{cat}) edges the rest. The encoder that
 wins is not the same at every $C$ and dataset, even though the
 practical gap to plain \textsc{linear} is small.
@@ -834,47 +838,94 @@ $95\%$ CI just brackets zero ($p{=}0.06$ paired, $p{=}0.014$
 unpaired). At $C{=}16$ the gap collapses to $0.008$ ($p{=}0.65$): no
 discernible effect. The advantage is a small-$C$ phenomenon.
 
-The $C$-dependence is hard to reconcile with either naive
-mechanistic reading of \textsc{linear-ppe}. Both readings predict the
-gap should \emph{grow} with $C$ under fixed $d_{\text{model}}$:
-positional--channel orthogonalisation has more channel directions to
-deconflict from position as $C$ grows, and positional subspace
-compression frees residual-stream capacity that should matter more
-when channel pressure is higher. A measure-concentration estimate
-agrees: at fixed $d_{\text{model}}$, the expected squared cosine
-between a random unit vector and the channel span grows as
-$C / d_{\text{model}}$, so position and channels become
-\emph{more} entangled with $C$, not less. The observation that the
-gap instead vanishes therefore points to factors none of these
-geometric readings capture. Plausible candidates include:
-(a)~the synthetic task has only four drivers regardless of $C$, so
-at large $C$ the model's representational effort shifts toward
-driver/distractor separation and any positional-projection benefit
-becomes a second-order effect;
-(b)~$W_{\text{pos}}$ is over-constrained as $C$ grows---it must
-rotate position out of a higher-dimensional channel span using the
-same $d_{\text{model}}^2$ parameters; or
-(c)~optimisation noise at large $C$ is large enough to wash out the
-small absolute gain. We do not measure any of these directly. The
-channel encoding itself remains a single linear layer in either case.
+\paragraph{Direct measurement: orthogonalisation, not compression.}
+We extract the per-channel projection matrix $W \in \mathbb{R}^{C
+\times d_{\text{model}}}$ and the effective positional basis
+$P \in \mathbb{R}^{T \times d_{\text{model}}}$ from trained
+\textsc{linear} and \textsc{linear-ppe} models ($C{=}4$, 5 seeds
+each; the \texttt{pospro\_geometry} stage of our reproducer). For
+\textsc{linear}, $P_{t,:} = \mathbf{p}(t)$ is the fixed sinusoidal
+basis; for \textsc{linear-ppe}, $P_{t,:} = W_{\text{pos}}
+\mathbf{p}(t) + \mathbf{b}_{\text{pos}}$ is the learned-rotated
+basis. Two metrics suffice to discriminate the mechanism:
+
+\begin{table}[h]
+\centering
+\caption{Geometric measurement of the positional basis $P$ and its
+overlap with the channel subspace $\mathrm{span}(W)$
+($C{=}4$, $300$ epochs, mean over 5 seeds).}
+\label{tab:pospro-geom}
+\begin{tabular}{lcc}
+\toprule
+& \textsc{linear} & \textsc{linear-ppe} \\
+\midrule
+Effective rank of $P$ (entropy of $\tilde\sigma^2$) & $7.59$ & $9.37$ \\
+Fraction of $\|P\|_F^2$ within $\mathrm{span}(W)$   & $0.032$ & $0.007$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The two metrics give opposite verdicts on the two readings. The
+\emph{orthogonalisation} reading is empirically confirmed: the
+fraction of $P$'s energy that lies inside $\mathrm{span}(W)$ drops by
+$\sim$$4.5\times$ under \textsc{linear-ppe} ($3.2\% \to 0.7\%$), so
+the learned $W_{\text{pos}}$ rotation actively pushes the positional
+encoding out of the channel subspace. The \emph{compression} reading
+is contradicted: $P$'s effective rank is \emph{higher} under
+\textsc{linear-ppe} ($9.37$ vs.\ $7.59$), not lower---the rotation
+spreads positional energy across more directions, not fewer. The
+mechanism is rotation, not compression.
+
+The redistribution is visible at the level of individual singular
+values: \textsc{linear}'s $P$ has one dominant direction ($\sigma_0
+\approx 52$) plus a long tail; \textsc{linear-ppe}'s is more evenly
+distributed ($\sigma_0 \approx 25$, with the next several around
+$11$--$13$). Rotating the dominant positional mode out of
+$\mathrm{span}(W)$ inevitably redistributes its energy across other
+directions, which is the same effect read either as ``orthogonalising
+position from channels'' or as ``flattening the singular spectrum of
+$P$''.
+
+We also computed a third candidate diagnostic---principal angles
+between $\mathrm{span}(W)$ and $\mathrm{span}(P)$---but found it
+degenerate at this dimensionality: $\mathrm{span}(W)$ is only
+$4$-dimensional, $\mathrm{span}(P)$ has rank $\sim$$22$ in a
+$64$-dimensional ambient space, and $\mathrm{span}(W)$ is therefore
+trivially contained in $\mathrm{span}(P)$ for either encoder (all
+principal angles come out $\sim$$0°$). Principal angles measure
+subset membership, not energetic overlap; the fraction-of-energy
+metric is the right tool here.
+
+With orthogonalisation confirmed, the $C$-dependent collapse of the
+gap admits a natural mechanistic reading: $W_{\text{pos}}$ must
+rotate $P$ out of a $C$-dimensional channel span using a fixed
+$d_{\text{model}}^2$ parameter budget, and the rotation becomes
+increasingly over-constrained as $C$ grows. At $C{=}4$ ($d_{\text{model}}
+{-} C = 60$ ``free'' dimensions for $P$ to occupy) the rotation
+clearly helps; at $C{=}16$ ($d_{\text{model}} {-} C = 48$, plus more
+channel pressure on the residual stream overall) it does not. We
+cannot fully separate this from two other plausible factors---the
+synthetic task has only four drivers regardless of $C$, so
+representational effort shifts elsewhere at large $C$; and seed-level
+optimisation variance is larger at higher $C$---but the
+over-constraint reading is the only one that directly invokes the
+empirically-supported mechanism.
 
 \paragraph{$d_{\text{model}}$ sweep.}
 The model-width sweep (Section~\ref{sec:results-dmodel},
-Table~\ref{tab:dmodel}) extends the \textsc{linear-ppe} test to $C{=}4$
-across $d_{\text{model}} \in \{64, 128, 256\}$. \textsc{linear-ppe}
-achieves the lowest val NLL at every width tested. The paired gap to
-\textsc{linear} is $0.050$ at $d{=}64$ ($p{=}0.012$, 5/5), $0.011$ at
-$d{=}128$ ($p{=}0.56$, 4/5; pulled down by a single anomalous seed),
-and $0.075$ at $d{=}256$ ($p{=}0.002$, 5/5). Across $d_{\text{model}}$
-$14/15$ paired-seed comparisons favour \textsc{linear-ppe}. This
-muddles rather than discriminates the mechanism question: the
-compression reading predicts a monotonic increase with
-$d_{\text{model}}$ (more room to compress into) and the
-orthogonalisation reading predicts a monotonic decrease (more room
-means free $W_k$ columns can avoid position on their own); we see
-neither pattern cleanly. The robust finding is that \textsc{linear-ppe}
-helps reliably at $C{=}4$ across a $4{\times}$ range of widths, in a
-regime where the model is otherwise overfitting at the larger widths.
+Table~\ref{tab:dmodel}) extends the \textsc{linear-ppe} test to
+$C{=}4$ across $d_{\text{model}} \in \{64, 128, 256\}$.
+\textsc{linear-ppe} achieves the lowest val NLL at every width
+tested. The paired gap to \textsc{linear} is $0.050$ at $d{=}64$
+($p{=}0.012$, 5/5), $0.011$ at $d{=}128$ ($p{=}0.56$, 4/5; pulled
+down by a single anomalous seed), and $0.075$ at $d{=}256$
+($p{=}0.002$, 5/5). Across $d_{\text{model}}$, $14$ of $15$
+paired-seed comparisons favour \textsc{linear-ppe}. The non-monotonic
+magnitude across $d_{\text{model}}$ is not what either naive
+mechanism would predict, but it is at least clear that the
+rotation-based advantage persists across a $4{\times}$ range of
+widths, including in the regime where the model is otherwise
+overfitting at the larger widths.
 
 \subsection{Convergence and wall-clock cost}
 \label{sec:results-convergence}
@@ -1069,27 +1120,29 @@ test makes use of the shared data and partition between
 \textsc{linear} and \textsc{linear-ppe} runs at each seed and places
 the gap several standard errors above zero.
 
-The $C$-dependence is the more interesting open question. At $C{=}8$
-the mean gap is $0.037$ (paired $p{=}0.06$, unpaired $p{=}0.014$);
-at $C{=}16$ it collapses to $0.008$ (no discernible effect). Both
-naive mechanistic readings of \textsc{linear-ppe}---(i)~projecting
-position into a learned subspace orients it away from the channel
-directions, or (ii)~it compresses position into fewer effective
-coordinates, freeing residual-stream capacity---would, if anything,
-predict the gap to \emph{grow} with $C$ rather than shrink: as the
-channel subspace dimension increases under fixed $d_{\text{model}}$,
-there are more directions to deconflict from position. The
-observation that the gap instead vanishes points to something not
-captured by either mechanism alone: perhaps at large $C$ the
-positional projection has too many channel constraints to satisfy
-simultaneously (the channel null space it must rotate into is only
-$d_{\text{model}} - C$ dimensional), or perhaps the encoder's
-contribution to NLL is dominated at large $C$ by failure modes that
-no positional projection can fix. A direct test---principal angles
-between $\text{span}(W_k)$ and the effective positional basis, plus
-the effective rank of that basis under \textsc{linear} vs.\
-\textsc{linear-ppe}---would discriminate these readings; we have not
-run it.
+A direct geometric measurement (Section~\ref{sec:results-pospro},
+Table~\ref{tab:pospro-geom}) settles the mechanism between the two
+candidate readings. The fraction of the positional basis $P$'s energy
+that lies inside the channel subspace $\mathrm{span}(W)$ drops
+$\sim$$4.5\times$ under \textsc{linear-ppe} ($3.2\% \to 0.7\%$); the
+learned $W_{\text{pos}}$ rotation is actively pushing $P$ out of
+$\mathrm{span}(W)$. The orthogonalisation reading is confirmed. The
+compression reading is contradicted by the same measurement: $P$'s
+effective rank is \emph{higher} under \textsc{linear-ppe} ($9.37$
+vs.\ $7.59$ entropy rank), not lower; the rotation spreads positional
+energy across more directions, not fewer. Rotating the dominant
+positional mode out of $\mathrm{span}(W)$ inevitably redistributes
+its energy elsewhere.
+
+The $C$-dependent collapse of the gap (from $\Delta=0.054$ at $C{=}4$
+to $\Delta=0.008$ at $C{=}16$) then admits a natural reading:
+$W_{\text{pos}}$ must rotate $P$ out of a $C$-dimensional channel
+span using a fixed $d_{\text{model}}^2$ parameter budget, and the
+rotation becomes increasingly over-constrained as $C$ grows. We
+cannot fully separate this from other factors at large $C$
+(driver/distractor pressure shifting representational effort
+elsewhere; larger seed-level optimisation variance), but it is the
+mechanism-internal explanation.
 
 \paragraph{Architectural baselines.}
 \textsc{ci} and \textsc{cat} give each channel nominally more capacity
@@ -1228,7 +1281,9 @@ orthogonality penalties, and channel-independent architectures do not
 improve on the bare linear layer within seed noise. Three variants deserve a footnote rather than a full carve-out.
 \textsc{linear-ppe} shows a small but solid synthetic-benchmark
 advantage at $C{=}4$ (paired $p{=}0.009$) that collapses with channel
-count and is absent by $C{=}16$. \textsc{mlp} pulls ahead of the
+count and is absent by $C{=}16$; a direct geometric probe shows the
+mechanism is positional--channel orthogonalisation rather than
+positional subspace compression. \textsc{mlp} pulls ahead of the
 linear family at $C{=}16$ under paired analysis (paired
 $p{=}0.0003$--$0.008$ at the main-sweep $N{=}512$; gap shrinks
 ${\sim}5\times$ at $10\times$ training data but stays statistically
