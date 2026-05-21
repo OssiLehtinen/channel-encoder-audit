@@ -1,0 +1,65 @@
+=== 300-EPOCH RESULTS SUMMARY ===
+
+--- Synthetic C=4 ---
+  linear-ppe: nll=2.1195+-0.0329  acc=0.258+-0.009  (5 seeds)
+   sum-perch: nll=2.1693+-0.0144  acc=0.248+-0.004  (5 seeds)
+   sum-ortho: nll=2.1698+-0.0142  acc=0.246+-0.004  (5 seeds)
+         mlp: nll=2.1699+-0.0323  acc=0.244+-0.010  (5 seeds)
+      concat: nll=2.1831+-0.0324  acc=0.243+-0.006  (5 seeds)
+         cat: nll=2.3705+-0.0677  acc=0.210+-0.014  (5 seeds)
+          ci: nll=3.0531+-0.0076  acc=0.139+-0.002  (5 seeds)
+         sum: nll=3.2520+-0.0095  acc=0.091+-0.002  (5 seeds)
+
+--- Synthetic C=8 ---
+  linear-ppe: nll=2.1322+-0.0206  acc=0.251+-0.005  (5 seeds)
+   sum-ortho: nll=2.1668+-0.0136  acc=0.244+-0.004  (5 seeds)
+   sum-perch: nll=2.1691+-0.0138  acc=0.246+-0.002  (5 seeds)
+         mlp: nll=2.2135+-0.0141  acc=0.233+-0.006  (5 seeds)
+      concat: nll=2.2235+-0.0082  acc=0.233+-0.004  (5 seeds)
+         cat: nll=2.3723+-0.1080  acc=0.210+-0.016  (5 seeds)
+          ci: nll=3.0556+-0.0133  acc=0.137+-0.005  (5 seeds)
+         sum: nll=3.3013+-0.0054  acc=0.081+-0.001  (5 seeds)
+
+--- Synthetic C=16 ---
+         mlp: nll=2.2215+-0.0227  acc=0.234+-0.003  (5 seeds)
+  linear-ppe: nll=2.2777+-0.0338  acc=0.223+-0.008  (5 seeds)
+   sum-perch: nll=2.2895+-0.0238  acc=0.222+-0.006  (5 seeds)
+   sum-ortho: nll=2.2963+-0.0295  acc=0.223+-0.008  (5 seeds)
+      concat: nll=2.3327+-0.0299  acc=0.214+-0.005  (5 seeds)
+          ci: nll=3.0789+-0.0240  acc=0.132+-0.006  (5 seeds)
+         sum: nll=3.3086+-0.0037  acc=0.075+-0.003  (5 seeds)
+
+--- Channel mask (C=4, seed 0, 300ep) ---
+         sum: base=0.092  mask=[0.08, 0.087, 0.082, 0.09]
+   sum-perch: base=0.244  mask=[0.095, 0.116, 0.105, 0.204]
+   sum-ortho: base=0.243  mask=[0.094, 0.117, 0.105, 0.206]
+         mlp: base=0.235  mask=[0.099, 0.11, 0.106, 0.211]
+  linear-ppe: base=0.253  mask=[0.095, 0.116, 0.105, 0.212]
+      concat: base=0.245  mask=[0.094, 0.114, 0.105, 0.202]
+          ci: base=0.141  mask=[0.087, 0.105, 0.088, 0.137]
+         cat: base=0.211  mask=[0.095, 0.11, 0.108, 0.196]
+
+--- Linear probe (C=4, seed 0, 300ep) ---
+         sum layer=0: R2=[0.255, 0.25, 0.242, 0.214]  mean=0.240
+         sum layer=3: R2=[0.246, 0.241, 0.232, 0.207]  mean=0.231
+   sum-perch layer=0: R2=[1.0, 1.0, 1.0, 1.0]  mean=1.000
+   sum-perch layer=3: R2=[0.957, 0.869, 0.905, 0.866]  mean=0.899
+   sum-ortho layer=0: R2=[1.0, 1.0, 1.0, 1.0]  mean=1.000
+   sum-ortho layer=3: R2=[0.958, 0.872, 0.905, 0.875]  mean=0.902
+         mlp layer=0: R2=[1.0, 1.0, 1.0, 1.0]  mean=1.000
+         mlp layer=3: R2=[0.933, 0.878, 0.914, 0.666]  mean=0.848
+  linear-ppe layer=0: R2=[1.0, 1.0, 1.0, 1.0]  mean=1.000
+  linear-ppe layer=3: R2=[0.939, 0.884, 0.852, 0.828]  mean=0.876
+      concat layer=0: R2=[0.998, 1.0, 1.0, 1.0]  mean=0.999
+      concat layer=3: R2=[0.961, 0.855, 0.912, 0.844]  mean=0.893
+
+--- ETTh1 (300 epochs) ---
+   sum-perch: nll=0.5592+-0.0146  acc=0.790+-0.009  (5 seeds)
+      concat: nll=0.5603+-0.0105  acc=0.778+-0.013  (5 seeds)
+   sum-ortho: nll=0.5637+-0.0164  acc=0.791+-0.009  (5 seeds)
+  linear-ppe: nll=0.5678+-0.0093  acc=0.777+-0.012  (5 seeds)
+         mlp: nll=0.5788+-0.0254  acc=0.786+-0.009  (5 seeds)
+          ci: nll=0.8222+-0.0399  acc=0.678+-0.022  (5 seeds)
+         sum: nll=3.6364+-0.0540  acc=0.008+-0.007  (5 seeds)
+
+NOTE: cat on ETTh1 still pending (aborted due to compute time)

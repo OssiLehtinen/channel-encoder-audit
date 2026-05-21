@@ -1,7 +1,7 @@
 [project]
 name = "fft-encode"
-version = "0.1.0"
-description = "FDM-style channel encoding vs naive embedding sum benchmark"
+version = "0.2.0"
+description = "Input encoders for multi-channel signal transformers: empirical audit of subspace geometry"
 requires-python = ">=3.11"
 dependencies = [
     "torch>=2.3",

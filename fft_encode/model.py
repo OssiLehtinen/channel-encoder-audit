@@ -14,7 +14,7 @@ import torch.nn.functional as F
 
 from .encodings import (  # noqa: F401
     ConcatEncoding,
-    FDMChannelEncoding,
+    MLPEncoding,
     SumEncoding,
     SumOrthoEncoding,
 )
@@ -95,31 +95,43 @@ def build_model(kind: str, n_channels: int, d_model: int, n_bins: int, **kw):
     """Return a model whose forward(x: (B,T,C)) -> logits (B,T,K).
 
     Encoder-only variants share SignalTransformer:
-      sum, concat, fdm, fdm-learn.
+      sum, linear, sum-ortho, mlp, linear-ppe, linear-lpe, concat.
     Architectural baselines return their own module:
       ci (channel-independent, PatchTST-spirit)
-      cat (channel-as-token, iTransformer/Crossformer-spirit)
+      cat (channel-as-token, iTransformer/Crossformer-spirit).
+
+    The name ``sum-perch`` is accepted as an alias for ``linear`` so that
+    JSON results produced before the rename still resolve.
     """
-    if kind in ("fdm", "fdm-learn", "sum", "concat"):
-        if kind == "fdm":
-            enc = FDMChannelEncoding(n_channels=n_channels, d_model=d_model)
-        elif kind == "fdm-learn":
-            enc = FDMChannelEncoding(n_channels=n_channels, d_model=d_model,
-                                     learnable_omega=True)
-        elif kind == "sum":
+    if kind in ("sum", "concat", "mlp"):
+        if kind == "sum":
             enc = SumEncoding(n_channels=n_channels, d_model=d_model)
         elif kind == "concat":
             enc = ConcatEncoding(n_channels=n_channels, d_model=d_model)
+        elif kind == "mlp":
+            enc = MLPEncoding(n_channels=n_channels, d_model=d_model)
         return SignalTransformer(enc, d_model=d_model, n_bins=n_bins, **kw)
     if kind == "sum-ortho":
         ortho_lambda = kw.pop("ortho_lambda", 1e-2)
         enc = SumOrthoEncoding(n_channels=n_channels, d_model=d_model,
                                ortho_lambda=ortho_lambda)
         return SignalTransformer(enc, d_model=d_model, n_bins=n_bins, **kw)
-    if kind == "sum-perch":
+    if kind in ("linear", "sum-perch"):
         kw.pop("ortho_lambda", None)
         enc = SumOrthoEncoding(n_channels=n_channels, d_model=d_model,
                                ortho_lambda=0.0)
+        return SignalTransformer(enc, d_model=d_model, n_bins=n_bins, **kw)
+    if kind == "linear-lpe":
+        kw.pop("ortho_lambda", None)
+        max_len = kw.get("max_len", 512)
+        enc = SumOrthoEncoding(n_channels=n_channels, d_model=d_model,
+                               ortho_lambda=0.0, learned_pos=True,
+                               max_len=max_len)
+        return SignalTransformer(enc, d_model=d_model, n_bins=n_bins, **kw)
+    if kind == "linear-ppe":
+        kw.pop("ortho_lambda", None)
+        enc = SumOrthoEncoding(n_channels=n_channels, d_model=d_model,
+                               ortho_lambda=0.0, project_pos=True)
         return SignalTransformer(enc, d_model=d_model, n_bins=n_bins, **kw)
     if kind in ("ci", "cat"):
         from .baselines import (

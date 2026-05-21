@@ -1,13 +1,7 @@
-"""Two input encoders for multi-channel scalar signals.
+"""Input encoders for multi-channel scalar signals.
 
-Both take input x of shape (B, T, C) where C is the number of channels,
+All take input x of shape (B, T, C) where C is the number of channels,
 and produce embeddings of shape (B, T, d_model).
-
-- SumEncoding: per-channel scalar -> learned linear projection to d_model,
-  then summed across channels (the "naive" baseline).
-- FDMChannelEncoding: each channel gets a non-overlapping block of
-  d_model // C dims; the scalar value modulates a sinusoidal carrier with
-  channel-specific log-spaced frequency, then blocks are concatenated.
 """
 
 from __future__ import annotations
@@ -56,14 +50,23 @@ class SumOrthoEncoding(nn.Module):
     """
 
     def __init__(self, n_channels: int, d_model: int, max_len: int = 4096,
-                 ortho_lambda: float = 1e-2):
+                 ortho_lambda: float = 1e-2, learned_pos: bool = False,
+                 project_pos: bool = False):
         super().__init__()
         self.C = n_channels
         self.d_model = d_model
         self.W = nn.Parameter(torch.empty(n_channels, d_model))
         nn.init.normal_(self.W, std=1.0 / math.sqrt(d_model))
         self.channel_bias = nn.Parameter(torch.zeros(n_channels, d_model))
-        self.register_buffer("pos", _sinusoidal_positions(max_len, d_model))
+        if learned_pos:
+            self.pos = nn.Embedding(max_len, d_model)
+            self._learned_pos = True
+        else:
+            self.register_buffer("pos", _sinusoidal_positions(max_len, d_model))
+            self._learned_pos = False
+        self._project_pos = project_pos
+        if project_pos:
+            self.pos_proj = nn.Linear(d_model, d_model)
         self.ortho_lambda = ortho_lambda
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -71,7 +74,13 @@ class SumOrthoEncoding(nn.Module):
         per_ch = x.unsqueeze(-1) * self.W + self.channel_bias
         emb = per_ch.sum(dim=2)
         T = emb.shape[1]
-        emb = emb + self.pos[:T].unsqueeze(0)
+        if self._learned_pos:
+            pos = self.pos(torch.arange(T, device=emb.device))
+        else:
+            pos = self.pos[:T].unsqueeze(0)
+        if self._project_pos:
+            pos = self.pos_proj(pos)
+        emb = emb + pos
         return emb
 
     def aux_loss(self) -> torch.Tensor:
@@ -96,6 +105,54 @@ class SumOrthoEncoding(nn.Module):
                 mean_off_abs_cos=float(off_abs.mean()),
                 cos_matrix=cos.cpu().tolist(),
             )
+
+    def variance_stats(self, x: torch.Tensor) -> dict:
+        """Per-channel variance contribution to the embedding.
+
+        Returns the fraction of total embedding variance attributable to
+        each channel, computed empirically over the input batch x.
+        """
+        with torch.no_grad():
+            # x: (B, T, C) -> per-channel contribution: (B, T, C, d_model)
+            per_ch = x.unsqueeze(-1) * self.W + self.channel_bias
+            # variance of each channel's contribution across (B, T)
+            flat = per_ch.reshape(-1, self.C, self.d_model)  # (B*T, C, d)
+            var_per_ch = flat.var(dim=0).sum(dim=-1)  # (C,)
+            total_var = var_per_ch.sum()
+            fracs = var_per_ch / (total_var + 1e-12)
+            norms = self.W.detach().norm(dim=-1)
+            return dict(
+                var_per_channel=var_per_ch.cpu().tolist(),
+                var_fraction=fracs.cpu().tolist(),
+                total_var=float(total_var),
+                norms=norms.cpu().tolist(),
+            )
+
+
+class MLPEncoding(nn.Module):
+    """Two-layer MLP applied to the full channel vector at each time step.
+
+    h(t) = Linear(GELU(Linear(v(t)))) + p(t), where v(t) in R^C.
+    Tests whether a nonlinear input projection improves over Linear.
+    """
+
+    def __init__(self, n_channels: int, d_model: int, max_len: int = 4096,
+                 d_hidden: int | None = None):
+        super().__init__()
+        if d_hidden is None:
+            d_hidden = d_model
+        self.mlp = nn.Sequential(
+            nn.Linear(n_channels, d_hidden),
+            nn.GELU(),
+            nn.Linear(d_hidden, d_model),
+        )
+        self.register_buffer("pos", _sinusoidal_positions(max_len, d_model))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        emb = self.mlp(x)
+        T = emb.shape[1]
+        emb = emb + self.pos[:T].unsqueeze(0)
+        return emb
 
 
 class ConcatEncoding(nn.Module):
@@ -124,82 +181,6 @@ class ConcatEncoding(nn.Module):
         emb = per_ch.reshape(B, T, C * d_block)
         emb = emb + self.pos[:T].unsqueeze(0)
         return emb
-
-
-class FDMChannelEncoding(nn.Module):
-    """Per-channel block with sinusoidal carrier modulated by signal value.
-
-    For channel k with value v_k(t) at position t:
-        block_k(t)[2i]   = v_k(t) * sin(omega_k * t / base^(2i/d_block))
-        block_k(t)[2i+1] = v_k(t) * cos(omega_k * t / base^(2i/d_block))
-    Blocks for k=0..C-1 are concatenated -> (B, T, d_model).
-    """
-
-    def __init__(
-        self,
-        n_channels: int,
-        d_model: int,
-        max_len: int = 4096,
-        base: float = 10000.0,
-        learnable_omega: bool = False,
-    ):
-        super().__init__()
-        assert d_model % n_channels == 0, "d_model must be divisible by C"
-        self.C = n_channels
-        self.d_model = d_model
-        self.d_block = d_model // n_channels
-        assert self.d_block % 2 == 0, "per-channel block size must be even"
-        self.max_len = max_len
-
-        # Log-spaced carrier frequencies, one per channel (in [omega_lo, omega_hi])
-        omegas = torch.logspace(
-            math.log10(0.5), math.log10(8.0), steps=n_channels, base=10.0
-        )
-        if learnable_omega:
-            self.omegas = nn.Parameter(omegas)
-        else:
-            self.register_buffer("omegas", omegas)
-
-        # RoPE-style inverse frequencies inside each block
-        i = torch.arange(0, self.d_block, 2).float()
-        inv_freq = 1.0 / (base ** (i / self.d_block))  # (d_block/2,)
-        self.register_buffer("inv_freq", inv_freq)
-
-        positions = torch.arange(max_len).float()
-        # angles[t, i] = t * inv_freq[i]
-        self.register_buffer("positions", positions)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (B, T, C)
-        B, T, C = x.shape
-        assert C == self.C, f"expected {self.C} channels, got {C}"
-        device = x.device
-
-        t = self.positions[:T].to(device)  # (T,)
-        # per-channel angle: omega_k * t * inv_freq_i  -> (C, T, d_block/2)
-        ang = (
-            self.omegas.view(C, 1, 1)
-            * t.view(1, T, 1)
-            * self.inv_freq.view(1, 1, -1)
-        )
-        sin = torch.sin(ang)  # (C, T, d_block/2)
-        cos = torch.cos(ang)
-        # interleave sin/cos -> (C, T, d_block)
-        carrier = torch.stack([sin, cos], dim=-1).flatten(-2)
-        # amplitude modulate by signal value
-        # x: (B, T, C) -> (B, C, T, 1)
-        amp = x.permute(0, 2, 1).unsqueeze(-1)
-        # carrier: (C, T, d_block) -> (1, C, T, d_block)
-        modulated = amp * carrier.unsqueeze(0)  # (B, C, T, d_block)
-        # concat blocks across channel axis into d_model
-        emb = modulated.permute(0, 2, 1, 3).reshape(B, T, self.d_model)
-        return emb
-
-    def recover_channel(self, h: torch.Tensor, k: int) -> torch.Tensor:
-        """Slice channel k's block out of an embedding tensor h: (B, T, d_model)."""
-        s = k * self.d_block
-        e = s + self.d_block
-        return h[..., s:e]
 
 
 def _sinusoidal_positions(max_len: int, d_model: int) -> torch.Tensor:

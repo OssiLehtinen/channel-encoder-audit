@@ -1,16 +1,13 @@
-"""Sweep runner for paper experiments. Saves results to results.json.
+"""Training primitives shared by reproduce.py and runner.py.
 
-Experiments:
-  E1 main:    C=4, fdm vs sum, multiple seeds.
-  E2 scaling: C in {4,8,16}, fdm vs sum, multiple seeds.
-  E3 mask:   at C=4, retrain once per encoder, then evaluate val_acc with
-             each channel zero-masked at test time.
+Exposes the config dataclass (``RunCfg``), the cosine/constant LR scheduler
+helper (``_make_scheduler``), the single-pass evaluator (``evaluate``), and
+a one-shot training driver (``train_run``) used by ad-hoc callers. The
+sweep loop itself lives in ``fft_encode.reproduce``.
 """
 
 from __future__ import annotations
 
-import argparse
-import json
 import time
 from dataclasses import dataclass, asdict
 
@@ -130,62 +127,3 @@ def train_run(cfg: RunCfg, device, return_model: bool = False):
     return out
 
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--out", type=str, default="results.json")
-    p.add_argument("--seeds", type=int, default=3)
-    p.add_argument("--epochs", type=int, default=12)
-    p.add_argument("--quick", action="store_true",
-                   help="reduced sweep for smoke testing")
-    args = p.parse_args()
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"device={device}")
-    seeds = list(range(args.seeds))
-    encoders = ["fdm", "concat", "sum"]
-    Cs = [4, 8, 16] if not args.quick else [4, 8]
-    epochs = args.epochs if not args.quick else 3
-    n_series = 512 if not args.quick else 64
-
-    all_runs = []
-
-    # E1+E2 are the same sweep: every (encoder, C, seed) combo.
-    for C in Cs:
-        for enc in encoders:
-            for s in seeds:
-                cfg = RunCfg(encoder=enc, C=C, seed=s,
-                             epochs=epochs, n_series=n_series)
-                t0 = time.time()
-                r = train_run(cfg, device)
-                print(
-                    f"[{enc} C={C} s={s}] "
-                    f"val_nll={r['val_nll']:.4f} val_acc={r['val_acc']:.3f} "
-                    f"params={r['params']:,} ({time.time()-t0:.1f}s)"
-                )
-                all_runs.append(r)
-
-    # E3: train one model per encoder at C=4 (use seed 0), evaluate with each
-    # channel zero-masked at test time.
-    mask_results = []
-    for enc in ["fdm", "concat", "sum"]:
-        cfg = RunCfg(encoder=enc, C=4, seed=0,
-                     epochs=epochs, n_series=n_series)
-        out, model, val_loader = train_run(cfg, device, return_model=True)
-        base_nll, base_acc = out["val_nll"], out["val_acc"]
-        per_channel = []
-        for k in range(4):
-            nll_k, acc_k = evaluate(model, val_loader, device, mask_channel=k)
-            per_channel.append(dict(channel=k, val_nll=nll_k, val_acc=acc_k))
-            print(f"[mask {enc} k={k}] nll={nll_k:.4f} acc={acc_k:.3f}")
-        mask_results.append(dict(
-            encoder=enc, base_nll=base_nll, base_acc=base_acc,
-            per_channel=per_channel,
-        ))
-
-    with open(args.out, "w") as f:
-        json.dump(dict(runs=all_runs, mask=mask_results), f, indent=2)
-    print(f"wrote {args.out}")
-
-
-if __name__ == "__main__":
-    main()

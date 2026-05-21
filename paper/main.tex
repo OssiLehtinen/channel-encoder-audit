@@ -189,9 +189,12 @@ AdamW optimiser, learning rate $3{\times}10^{-4}$ with cosine decay
 to $1\%$ of peak, weight decay $10^{-4}$, batch size 32, gradient clip
 1.0. Each configuration is run over 5 random seeds. Metrics are
 reported at the best validation NLL achieved during training (effective
-early stopping). Most experiments use 100 epochs; extended runs at 300
-epochs are reported where convergence is relevant
-(Section~\ref{sec:results-extended}).
+early stopping). All headline experiments use 300 epochs. The
+gram-matrix and encoding-space analyses
+(Sections~\ref{sec:results-gram}--\ref{sec:results-space}) were measured
+at a 100-epoch training point as a representative snapshot; the
+qualitative claims (near-orthogonality, driver/distractor norm gap)
+are stable across this and the converged regime.
 
 \subsection{Datasets}
 
@@ -226,19 +229,20 @@ otherwise identical.
 \input{tables/main.tex}
 
 Table~\ref{tab:main} reports all eight encoders at $C{=}4$,
-$d_{\text{model}}{=}64$, 100 epochs. Three encoders tie at the top
-within seed std: \textsc{linear}, \textsc{sum-ortho}, and
-\textsc{concat}. \textsc{linear-ppe} converges faster, reaching
-$2.355$ at 100 epochs (still improving). \textsc{linear} matches
+$d_{\text{model}}{=}64$, 300 epochs with cosine LR decay (the same
+budget used throughout the paper). Four encoders sit within seed std
+of each other at the top: \textsc{linear}, \textsc{sum-ortho},
+\textsc{mlp}, and \textsc{concat}. \textsc{linear} matches
 \textsc{sum-ortho} to four decimal places---the orthogonality penalty
-contributes nothing.
-
-\textsc{mlp} sits between the top tier and the architectural baselines
-at 100 epochs but is still improving; at $3{\times}$ the training
-budget it converges to the same NLL (Section~\ref{sec:results-extended}).
-\textsc{ci} and \textsc{cat} underperform despite nominally giving each
-channel more capacity. The only encoder that loses decisively is
-\textsc{sum}, which lacks per-channel projections.
+contributes nothing at convergence. The MLP stem's ${\sim}9{\times}$
+extra encoder parameters likewise provide no benefit. The only variant
+that pulls ahead is \textsc{linear-ppe}, which projects the sinusoidal
+positional encoding through a learned linear layer; its ${\sim}0.05$
+NLL gap exceeds seed std but is borderline at this sample size, and we
+return to the question of mechanism in Section~\ref{sec:results-pospro}
+and the Discussion. \textsc{ci} and \textsc{cat} underperform despite
+nominally giving each channel more capacity. The only encoder that
+loses decisively is \textsc{sum}, which lacks per-channel projections.
 
 \subsection{Channel-count scaling}
 \label{sec:results-scaling}
@@ -352,40 +356,71 @@ Zeroing one channel at test time (Table~\ref{tab:mask}), the top-tier
 encoders show sharp, interpretable per-channel accuracy drops that
 match the outcome formula. \textsc{sum} is nearly flat.
 
-\subsection{Extended training and positional projection}
-\label{sec:results-extended}
+\subsection{Positional projection: a small additional effect}
+\label{sec:results-pospro}
 
-At 100 epochs, \textsc{mlp} and \textsc{linear-ppe} are still
-improving. To determine ceiling vs.\ convergence-speed differences, we
-rerun at $3{\times}$ the training budget (300 epochs, $C{=}4$):
+Of the encoders compared in Table~\ref{tab:main}, only
+\textsc{linear-ppe} sits outside the seed-std band of the top tier.
+Its ${\sim}0.05$ NLL improvement over \textsc{linear} is present at
+every checkpoint we record, not just at the end ($2.225$ vs.\ $2.271$
+NLL at epoch 100), so it is not a slow-burn late-training artefact.
+With only five seeds the gap exceeds either run's seed std but is at
+the edge of what our sample resolves; we discuss possible mechanisms
+(positional--channel orthogonalisation vs.\ positional subspace
+compression) in the Discussion but neither is pinned down by the
+present data. The channel encoding itself remains a single linear
+layer in either case.
+
+\subsection{Convergence and wall-clock cost}
+\label{sec:results-convergence}
+
+A natural worry is that more involved encoders---an MLP stem, a
+projected positional layer, an orthogonality regulariser---might cost
+extra training time even when they don't change the ceiling. From the
+300-epoch traces (val NLL recorded every 20 epochs, $C{=}4$,
+5 seeds) we extract two diagnostics: the epoch at which each run
+first reaches within $0.05$ NLL of its own best, and the wall-clock
+seconds per epoch, normalised to \textsc{linear}.
 
 \begin{table}[h]
 \centering
-\caption{Extended training (300 epochs, cosine decay, $C{=}4$, 5 seeds).}
-\label{tab:extended}
-\begin{tabular}{lcc}
+\caption{Convergence speed and wall-clock cost ($C{=}4$, 300 epochs,
+5 seeds, single GPU). Epochs-to-target is rounded to the trace
+resolution of 20 epochs. Cost is per-epoch wall time normalised to
+\textsc{linear}.}
+\label{tab:convergence}
+\begin{tabular}{lccc}
 \toprule
-encoder & val NLL $\downarrow$ & val acc $\uparrow$ \\
+encoder & best NLL & epoch to NLL $+0.05$ & relative cost \\
 \midrule
-\textsc{linear-ppe} & $2.120 \pm 0.033$ & $0.258 \pm 0.009$ \\
-\textsc{linear}     & $2.169 \pm 0.014$ & $0.248 \pm 0.004$ \\
-\textsc{sum-ortho} & $2.170 \pm 0.014$ & $0.246 \pm 0.004$ \\
-\textsc{mlp}       & $2.170 \pm 0.032$ & $0.244 \pm 0.010$ \\
-\textsc{concat}    & $2.183 \pm 0.032$ & $0.243 \pm 0.006$ \\
+\textsc{linear}     & $2.169$ & $\sim$150 & $1.00\times$ \\
+\textsc{sum-ortho}  & $2.170$ & $\sim$150 & $1.06\times$ \\
+\textsc{mlp}        & $2.170$ & $\sim$150 & $1.00\times$ \\
+\textsc{concat}     & $2.183$ & $\sim$150 & $0.88\times$ \\
+\textsc{linear-ppe} & $2.120$ & $\sim$150 & $0.94\times$ \\
+\midrule
+\textsc{sum}        & $3.252$ & $\sim$20 (plateau) & $1.00\times$ \\
+\textsc{ci}         & $3.053$ & $\sim$20 (plateau) & $3.0\times$ \\
+\textsc{cat}        & $2.371$ & $\sim$184 & $6.5\times$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\textsc{linear}, \textsc{sum-ortho}, \textsc{mlp}, and \textsc{concat}
-sit within seed std of each other---we read this as the same ceiling.
-The MLP stem's $9{\times}$ extra parameters offer no benefit at this
-budget. \textsc{linear-ppe} shows a ${\sim}0.05$ NLL advantage over
-\textsc{linear}; the gap exceeds either run's seed std but with five
-seeds we treat it as suggestive rather than established. The channel
-encoding itself remains a single linear layer in either case. We
-discuss possible mechanisms (positional--channel orthogonalisation
-vs.\ positional subspace compression) below, but neither is pinned
-down by the present data.
+The five top-tier encoders reach within $0.05$ NLL of their final
+value at the same trace point ($\sim$150 epochs) and cost essentially
+the same per-epoch wall time---the transformer backbone dominates, so
+encoder choice within this family is free. In particular, the MLP
+stem's $9{\times}$ extra parameters do not slow convergence. The
+\textsc{linear-ppe} advantage is present at every checkpoint, not
+just at the end ($2.225$ vs.\ $2.271$ NLL at epoch 100), so it is not
+a slow-burn late-training artefact.
+
+\textsc{ci} and \textsc{cat} pay substantial wall-clock costs from
+their architectures, not their input encoders: $\sim$3$\times$ at
+$C{=}4$ for \textsc{ci} (scaling with $C$ to ${\sim}14\times$ at
+$C{=}16$) and $\sim$6.5$\times$ for \textsc{cat} (scaling with $C^2T^2$
+to ${\sim}24\times$ at $C{=}8$). \textsc{cat} also converges to its
+worse ceiling later than the top tier reaches its ceiling.
 
 \subsection{Real-data validation: ETTh1}
 \label{sec:results-etth1}
@@ -452,7 +487,18 @@ under \textsc{linear} vs.\ \textsc{linear-ppe}---we have not run.
 \textsc{ci} and \textsc{cat} give each channel nominally more capacity
 but underperform at matched parameters. \textsc{ci}'s bottleneck is the
 head combining $C$ streams; \textsc{cat} pays $\mathcal{O}((CT)^2)$
-attention for no gain on this task.
+attention for no gain on this task. The wall-clock cost is
+substantial---${\sim}14{\times}$ \textsc{linear} at $C{=}16$ for
+\textsc{ci}, ${\sim}24{\times}$ at $C{=}8$ for \textsc{cat}---and
+buys a worse ceiling.
+
+\paragraph{No convergence-time penalty for involved encoders.}
+\textsc{mlp}, \textsc{sum-ortho}, and \textsc{linear-ppe} reach within
+$0.05$ NLL of their final value at the same trace point as
+\textsc{linear} ($\sim$150 epochs) and cost the same per-epoch wall
+time. Within the family that uses per-channel $W_k$ on a shared
+backbone, encoder choice does not change either the convergence
+schedule or compute budget.
 
 \paragraph{LayerNorm preserves channel separation.}
 Linear probes at layer 3 recover each channel to $R^2 \ge 0.92$;

@@ -4,9 +4,9 @@
 channel's input at inference; rows show the resulting val accuracy.
 $\Delta$ is accuracy drop from the unmasked baseline. The outcome formula
 uses ch0 in two interaction terms, ch1 in one, and ch2/ch3 once each with
-smaller marginal effect; block-partitioned and orthogonalised-sum encoders
-reproduce this ordering cleanly, whereas \textsc{sum}, \textsc{ci} and
-\textsc{cat} are much flatter.}
+smaller marginal effect; the per-channel-$W_k$ encoders (\textsc{concat},
+\textsc{linear}, \textsc{sum-ortho}) reproduce this ordering cleanly,
+whereas \textsc{sum}, \textsc{ci} and \textsc{cat} are much flatter.}
 \label{tab:mask}
 \begin{tabular}{lccccc}
 \toprule
@@ -18,11 +18,9 @@ $\Delta$ acc       &   ---   & $-0.015$ & $-0.006$ & $-0.003$ & $\phantom{-}0.00
 $\Delta$ acc       &   ---   & $-0.073$ & $-0.062$ & $-0.049$ & $-0.003$ \\
 \textsc{ci}        & $0.140$ & $0.088$ & $0.121$ & $0.096$ & $0.141$ \\
 $\Delta$ acc       &   ---   & $-0.052$ & $-0.019$ & $-0.044$ & $+0.001$ \\
-\textsc{fdm}       & $0.148$ & $0.086$ & $0.099$ & $0.118$ & $0.146$ \\
-$\Delta$ acc       &   ---   & $-0.062$ & $-0.049$ & $-0.030$ & $-0.002$ \\
 \textsc{concat}    & $0.200$ & $0.091$ & $0.103$ & $0.119$ & $0.188$ \\
 $\Delta$ acc       &   ---   & $-0.109$ & $-0.097$ & $-0.081$ & $-0.012$ \\
-\textsc{sum-perch} & $0.200$ & $0.089$ & $0.110$ & $0.114$ & $0.186$ \\
+\textsc{linear}    & $0.200$ & $0.089$ & $0.110$ & $0.114$ & $0.186$ \\
 $\Delta$ acc       &   ---   & $-0.111$ & $-0.090$ & $-0.086$ & $-0.014$ \\
 \textsc{sum-ortho} & $0.201$ & $0.089$ & $0.109$ & $0.115$ & $0.187$ \\
 $\Delta$ acc       &   ---   & $-0.112$ & $-0.092$ & $-0.086$ & $-0.014$ \\
