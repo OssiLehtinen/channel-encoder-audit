@@ -48,6 +48,7 @@ class RunCfg:
     batch_size: int = 32
     lr_schedule: str = "cosine"   # {"cosine", "constant"}
     lr_min_frac: float = 0.01      # cosine floor as fraction of lr
+    target_type: str = "categorical"  # {"categorical", "regression"}
 
 
 def make_loaders(cfg: RunCfg):
@@ -107,6 +108,41 @@ def evaluate(model, loader, device, mask_channel: int | None = None,
     if return_per_example:
         return avg_nll, avg_acc, per_example_nlls
     return avg_nll, avg_acc
+
+
+def evaluate_mse(model, loader, device, return_per_example: bool = False):
+    """Aggregate next-step MSE over the val set for a regression head.
+
+    Also returns RMSE and (if requested) per-sequence MSEs."""
+    import torch.nn.functional as F
+    model.eval()
+    tot_sse, tot_n = 0.0, 0
+    tot_y_sum, tot_y_sq = 0.0, 0.0  # for variance computation
+    per_example_mses: list = []
+    with torch.no_grad():
+        for x, y in loader:
+            x, y = x.to(device), y.to(device)
+            preds = model(x)  # (B, T, 1) or (B, T)
+            if preds.dim() == 3 and preds.size(-1) == 1:
+                preds = preds.squeeze(-1)
+            B = y.size(0)
+            T = y.size(1)
+            pred = preds[:, :-1]
+            tgt = y[:, 1:]
+            sq_err = (pred - tgt) ** 2  # (B, T-1)
+            tot_sse += sq_err.sum().item()
+            tot_n += tgt.numel()
+            tot_y_sum += tgt.sum().item()
+            tot_y_sq += (tgt ** 2).sum().item()
+            if return_per_example:
+                per_example_mses.extend(sq_err.mean(dim=1).cpu().tolist())
+    mse = tot_sse / tot_n
+    y_mean = tot_y_sum / tot_n
+    y_var = tot_y_sq / tot_n - y_mean ** 2
+    r2 = 1 - mse / max(y_var, 1e-12)
+    if return_per_example:
+        return mse, r2, per_example_mses
+    return mse, r2
 
 
 def train_run(cfg: RunCfg, device, return_model: bool = False):

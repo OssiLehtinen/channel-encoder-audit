@@ -75,7 +75,7 @@ from .experiments import RunCfg, _make_scheduler, evaluate
 from .model import build_model, nll_loss
 from .probe import collect_hidden, fit_probe
 from .real_data import ETTh1Dataset
-from .runner import train_and_trace
+from .runner import train_and_trace, train_and_trace_mse
 
 # Canonical encoder list, paper order.
 ENCODERS = ["sum", "linear", "sum-ortho", "mlp", "linear-ppe",
@@ -87,7 +87,7 @@ ENCODERS_DMODEL = ["sum", "concat"]
 
 ALL_STAGES = ["main", "dmodel", "geometry", "probe", "mask", "etth1",
               "convergence", "bias", "geom_largen", "main_largen",
-              "pospro_geometry", "extra_seeds"]
+              "pospro_geometry", "extra_seeds", "main_mse"]
 
 EXTRA_DMODEL_ENCODERS = ["sum", "concat", "linear", "linear-ppe",
                          "mlp", "sum-ortho"]
@@ -421,6 +421,41 @@ def stage_main_largen(args, device) -> list:
                   f"best_nll={r['best_val_nll']:.4f}@ep{r['best_epoch']:>3} "
                   f"acc={r['best_val_acc']:.3f} "
                   f"({time.time()-t0:.1f}s)", flush=True)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Stage 7c2: MSE-target main sweep (loss-family sensitivity check)
+# ---------------------------------------------------------------------------
+
+def stage_main_mse(args, device) -> list:
+    """Re-run the synthetic main sweep with an MSE regression head instead
+    of the categorical 32-bin head. Same encoders, same backbone, same
+    paired seeds; only the head and loss change. Lets us check whether
+    the encoder ranking is target-specific or robust to the loss family.
+
+    Skips ci/cat (architectural baselines build their own heads and
+    aren't a clean swap)."""
+    encs = args.main_mse_encoders
+    Cs = args.main_mse_Cs
+    seeds = args.main_mse_seeds
+    header(f"main_mse: {encs} at C in {Cs}, {seeds} seeds, MSE target")
+    out = []
+    for C in Cs:
+        for enc in encs:
+            for s in range(seeds):
+                cfg = RunCfg(encoder=enc, C=C, seed=s,
+                             epochs=args.epochs, n_series=args.n_series,
+                             target_type="regression")
+                t0 = time.time()
+                r = train_and_trace_mse(cfg, device,
+                                        log_every=args.log_every)
+                out.append(r)
+                print(f"  [{enc:>10} C={C:>2} s={s}] "
+                      f"best_mse={r['best_val_mse']:.4f} "
+                      f"R2={r['best_val_r2']:.3f} "
+                      f"@ep{r['best_epoch']:>3} "
+                      f"({time.time()-t0:.1f}s)", flush=True)
     return out
 
 
@@ -994,6 +1029,23 @@ def write_summary(out_dir: str, results: dict) -> None:
                 f"{fps.std(ddof=1):.3f}"
             )
 
+    if "main_mse" in results:
+        lines.append("\n" + "=" * 70)
+        lines.append("MAIN SWEEP, MSE TARGET (loss-family sensitivity check)")
+        lines.append("=" * 70)
+        g = defaultdict(list)
+        for r in results["main_mse"]:
+            g[(r["cfg"]["encoder"], r["cfg"]["C"])].append(r)
+        for key in sorted(g.keys(), key=lambda k: (k[1], k[0])):
+            enc, C = key
+            rs = g[key]
+            mses = [r["best_val_mse"] for r in rs]
+            r2s = [r["best_val_r2"] for r in rs]
+            lines.append(f"  {enc:>12}  C={C:>2}  "
+                         f"mse={np.mean(mses):.4f}±{np.std(mses, ddof=1) if len(mses) > 1 else 0:.4f}  "
+                         f"R²={np.mean(r2s):.3f}±{np.std(r2s, ddof=1) if len(r2s) > 1 else 0:.3f}  "
+                         f"(n={len(rs)})")
+
     if "main_largen" in results:
         lines.append("\n" + "=" * 70)
         lines.append("MAIN SWEEP AT LARGE N (top-tier encoders, "
@@ -1108,6 +1160,15 @@ def main() -> None:
     p.add_argument("--pospro-seeds", type=int, default=5,
                    help="seed count for the pospro_geometry stage "
                         "(default: 5)")
+    p.add_argument("--main-mse-encoders", nargs="+",
+                   default=["sum", "linear", "sum-ortho", "concat",
+                            "mlp", "linear-ppe"],
+                   help="encoders for the main_mse stage")
+    p.add_argument("--main-mse-Cs", type=int, nargs="+", default=[4, 16],
+                   help="channel counts for the main_mse stage "
+                        "(default: 4 16)")
+    p.add_argument("--main-mse-seeds", type=int, default=5,
+                   help="seed count for the main_mse stage (default: 5)")
     p.add_argument("--extra-seeds-start", type=int, default=5,
                    help="first seed for the extra_seeds round-robin "
                         "stage (default: 5, so seeds 0..4 already "
@@ -1179,6 +1240,12 @@ def main() -> None:
         with open(os.path.join(args.out, "main_largen.json"), "w") as f:
             json.dump(mln, f, indent=2)
 
+    if "main_mse" in args.stages:
+        mm = stage_main_mse(args, device)
+        results["main_mse"] = mm
+        with open(os.path.join(args.out, "main_mse.json"), "w") as f:
+            json.dump(mm, f, indent=2)
+
     if "pospro_geometry" in args.stages:
         pg = stage_pospro_geometry(args, device)
         results["pospro_geometry"] = pg
@@ -1216,6 +1283,7 @@ def main() -> None:
         "geom_largen": "geom_largen.json",
         "main_largen": "main_largen.json",
         "pospro_geometry": "pospro_geometry.json",
+        "main_mse": "main_mse.json",
     }
     for key, fname in _STAGE_FILES.items():
         if key in results:

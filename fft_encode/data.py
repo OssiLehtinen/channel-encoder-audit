@@ -60,10 +60,12 @@ class MultiSignalDataset(Dataset):
         C: int = 4,
         K: int = 32,
         seed: int = 0,
+        return_continuous: bool = False,
     ):
         self.C = C
         self.T = T
         self.K = K
+        self.return_continuous = return_continuous
         rng = np.random.default_rng(seed)
 
         all_signals = np.stack(
@@ -85,11 +87,15 @@ class MultiSignalDataset(Dataset):
 
         self.signals = torch.from_numpy(all_signals)  # (N, C, T) float32
         self.targets = torch.from_numpy(bins)  # (N, T) long
+        self.continuous_targets = torch.from_numpy(all_y)  # (N, T) float32
         self.bin_edges = torch.from_numpy(edges.astype(np.float32))
 
     def __len__(self) -> int:
         return self.signals.shape[0]
 
     def __getitem__(self, idx: int):
-        # signals: (T, C), targets: (T,)
-        return self.signals[idx].transpose(0, 1), self.targets[idx]
+        # signals: (T, C), targets: (T,) (long bins or float32 continuous)
+        x = self.signals[idx].transpose(0, 1)
+        if self.return_continuous:
+            return x, self.continuous_targets[idx]
+        return x, self.targets[idx]

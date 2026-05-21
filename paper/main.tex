@@ -1197,8 +1197,21 @@ mechanism-internal explanation.
 \textsc{ci} and \textsc{cat} give each channel nominally more capacity
 at substantial wall-clock cost---${\sim}8{\times}$ \textsc{linear} at
 $C{=}16$ for \textsc{ci}, ${\sim}17{\times}$ at $C{=}8$ for
-\textsc{cat}. \textsc{ci} underperforms throughout: its bottleneck is
-the head combining $C$ streams. \textsc{cat} is more interesting.
+\textsc{cat}. \textsc{ci} underperforms throughout. Two things
+contribute. (i) Its head combines $C$ per-channel hidden streams into
+a single prediction, which is the structural bottleneck. (ii) It also
+\emph{overfits universally} at the main-sweep scale: all $20$ seeds
+at every $C \in \{4, 8, 16\}$ flag ``overfitting'', best val NLL is
+reached at epoch ${\sim}40$--$60$, and val NLL drifts upward by
+$0.12$--$0.29$ nats afterwards (worse at larger $C$). The
+\textsc{ci} NLL we report is the effective-early-stopping minimum;
+without early stopping the encoder would look substantially worse.
+\textsc{cat}, by contrast, is well converged (all $20$ seeds at
+$C \in \{4, 8\}$ flag ``converged'', best epoch ${\sim}280$--$300$,
+final-equals-best to four decimals); the synthetic-benchmark gap
+to the per-channel-$W_k$ tier is a property of \textsc{cat}'s
+converged optimum, not a convergence artefact. \textsc{cat} is more
+interesting.
 On the synthetic benchmark, where drivers and distractors are mixed,
 it sits well below the per-channel-$W_k$ tier ($2.35$ vs.\ ${\sim}2.15$
 NLL at $C{=}4$). On ETTh1, where all seven variates are informative

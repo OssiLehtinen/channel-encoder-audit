@@ -160,3 +160,15 @@ def nll_loss(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
     pred = logits[:, :-1].reshape(-1, logits.size(-1))
     tgt = targets[:, 1:].reshape(-1)
     return F.cross_entropy(pred, tgt)
+
+
+def mse_loss(preds: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    """Next-step MSE for a continuous-target head.
+
+    preds: (B, T, 1) or (B, T) scalar predictions, targets: (B, T) continuous.
+    """
+    if preds.dim() == 3 and preds.size(-1) == 1:
+        preds = preds.squeeze(-1)
+    pred = preds[:, :-1]
+    tgt = targets[:, 1:]
+    return F.mse_loss(pred, tgt)
