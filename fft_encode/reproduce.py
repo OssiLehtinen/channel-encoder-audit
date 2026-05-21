@@ -19,6 +19,9 @@ Stages (default: all)
     mask        test-time channel masking, C=4
     etth1       ETTh1 real-data validation, C=7, d_model=56
     convergence analysis-only: derives epochs-to-target from main traces
+    bias        channel-bias ablation (linear vs linear-nobias, C=4)
+    geom_largen large-N geometry: linear at C=8 with 10x training data,
+                probes the distractor-norm noise-floor hypothesis
 
 Outputs
 -------
@@ -29,6 +32,8 @@ Outputs
     <out>/mask.json
     <out>/etth1.json
     <out>/convergence.json
+    <out>/bias.json
+    <out>/geom_largen.json
     <out>/summary.txt        human-readable aggregate of everything
 """
 
@@ -61,7 +66,7 @@ ENCODERS_PROBE = ["sum", "linear", "sum-ortho", "mlp", "linear-ppe", "concat"]
 ENCODERS_DMODEL = ["sum", "concat"]
 
 ALL_STAGES = ["main", "dmodel", "geometry", "probe", "mask", "etth1",
-              "convergence", "bias"]
+              "convergence", "bias", "geom_largen"]
 
 
 def header(s: str) -> None:
@@ -329,6 +334,48 @@ def stage_etth1(args, device) -> list:
 
 
 # ---------------------------------------------------------------------------
+# Stage 7b: large-N geometry test (distractor norm noise-floor hypothesis)
+# ---------------------------------------------------------------------------
+
+def stage_geom_largen(args, device) -> list:
+    """Probe the distractor-norm noise-floor hypothesis. The true gradient on
+    a distractor channel's W_k is zero in expectation (since the channel is
+    independent of the outcome), so the equilibrium norm under L2 weight
+    decay is set by stochastic gradient noise that scales as O(1/sqrt(N)).
+    More training data should therefore shrink distractor norms (drivers
+    largely unaffected). Train `linear` at C=8 with n_series = N_large (10x
+    the standard 512), single seed by default; reports the same geometry
+    metrics as the `geometry` stage so the two can be compared directly."""
+    header(f"geom_largen: linear at C=8 with n_series={args.geom_largen_n_series}, "
+           f"{args.geom_largen_seeds} seed(s)")
+    out = []
+    for s in range(args.geom_largen_seeds):
+        cfg = RunCfg(encoder="linear", C=8, seed=s,
+                     epochs=args.epochs, n_series=args.geom_largen_n_series)
+        t0 = time.time()
+        r, model, val_loader = train_and_trace(
+            cfg, device, log_every=args.log_every, return_model=True)
+        gram = model.encoder.gram_stats()
+        xs = [xb for xb, _ in val_loader]
+        x_all = torch.cat(xs, 0).to(device)
+        var = model.encoder.variance_stats(x_all)
+        out.append(dict(
+            C=8, seed=s, n_series=args.geom_largen_n_series,
+            best_val_nll=r["best_val_nll"],
+            norms=gram["norms"],
+            max_off_abs_cos=gram["max_off_abs_cos"],
+            mean_off_abs_cos=gram["mean_off_abs_cos"],
+            var_fraction=var["var_fraction"],
+        ))
+        print(f"  [linear C=8 s={s} N={args.geom_largen_n_series}] "
+              f"nll={r['best_val_nll']:.4f} "
+              f"mean|cos|={gram['mean_off_abs_cos']:.4f} "
+              f"norms={[round(n,3) for n in gram['norms']]} "
+              f"({time.time()-t0:.1f}s)", flush=True)
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Stage 7: channel-bias ablation
 # ---------------------------------------------------------------------------
 
@@ -522,6 +569,28 @@ def write_summary(out_dir: str, results: dict) -> None:
                          f"{np.mean(nlls):.4f}±{np.std(nlls):.4f}  "
                          f"{np.mean(accs):.3f}±{np.std(accs):.3f}")
 
+    if "geom_largen" in results:
+        lines.append("\n" + "=" * 70)
+        lines.append("GEOMETRY AT LARGE N (linear at C=8, distractor "
+                     "noise-floor probe)")
+        lines.append("=" * 70)
+        for r in results["geom_largen"]:
+            lines.append(f"\n  seed={r['seed']}, n_series={r['n_series']}: "
+                         f"nll={r['best_val_nll']:.4f}, "
+                         f"mean|cos|={r['mean_off_abs_cos']:.4f}")
+            norms = r["norms"]
+            fracs = r["var_fraction"]
+            lines.append("    norms = [" +
+                         ", ".join(f"{n:.3f}" for n in norms) + "]")
+            lines.append("    var%  = [" +
+                         ", ".join(f"{v:.3f}" for v in fracs) + "]")
+            if len(norms) > 4:
+                drv = np.mean(norms[:4])
+                dst = np.mean(norms[4:])
+                lines.append(f"    driver/distractor norm ratio = "
+                             f"{drv/dst:.3f}  (driver={drv:.3f}, "
+                             f"distractor={dst:.3f})")
+
     if "bias" in results:
         lines.append("\n" + "=" * 70)
         lines.append("BIAS ABLATION (linear vs. linear-nobias, C=4, 5 seeds)")
@@ -576,6 +645,11 @@ def main() -> None:
     p.add_argument("--encoders-dmodel", nargs="+", default=ENCODERS_DMODEL)
     p.add_argument("--cat-max-C", type=int, default=8,
                    help="skip cat at synthetic C > this (O((CT)^2) attention)")
+    p.add_argument("--geom-largen-n-series", type=int, default=5120,
+                   help="n_series for the geom_largen stage "
+                        "(default: 5120 = 10x the main-sweep N=512)")
+    p.add_argument("--geom-largen-seeds", type=int, default=1,
+                   help="seed count for the geom_largen stage (default: 1)")
     p.add_argument("--stages", nargs="+", choices=ALL_STAGES,
                    default=ALL_STAGES,
                    help="which stages to run (default: all)")
@@ -631,6 +705,12 @@ def main() -> None:
         with open(os.path.join(args.out, "bias.json"), "w") as f:
             json.dump(bi, f, indent=2)
 
+    if "geom_largen" in args.stages:
+        gln = stage_geom_largen(args, device)
+        results["geom_largen"] = gln
+        with open(os.path.join(args.out, "geom_largen.json"), "w") as f:
+            json.dump(gln, f, indent=2)
+
     if "convergence" in args.stages:
         # Convergence requires main traces. If `main` wasn't run this session,
         # try loading from disk so the stage still works.
@@ -654,6 +734,7 @@ def main() -> None:
         "geometry": "geometry.json", "probe": "probe.json",
         "mask": "mask.json", "etth1": "etth1.json",
         "convergence": "convergence.json", "bias": "bias.json",
+        "geom_largen": "geom_largen.json",
     }
     for key, fname in _STAGE_FILES.items():
         if key in results:

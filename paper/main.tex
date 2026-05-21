@@ -540,6 +540,47 @@ norms, and the fine-grained ordering within drivers is descriptive
 only; the robust claim is the driver/distractor gap, which holds at
 both channel counts.
 
+\paragraph{Why distractor norms are not zero.}
+The driver/distractor gap is large but the distractor norms (${\sim}0.55$
+at $C{=}8$) do not vanish. This is consistent with the
+finite-data dynamics rather than an asymptotic property of the
+encoder. The expected gradient on a distractor weight $W_k$ is
+\[
+\mathbb{E}\!\left[\frac{\partial \mathcal{L}}{\partial W_k}\right]
+= \mathbb{E}\!\left[\frac{\partial \mathcal{L}}{\partial \mathbf{h}(t)}
+                    \,\cdot\, v_k(t)\right],
+\]
+which factorises to zero whenever the distractor input $v_k$ is
+independent of the drivers and the outcome (true by construction in
+the synthetic benchmark, and approximately so for the standardised
+synthetic channels). With finite data, however, stochastic gradient
+estimates have nonzero variance whose magnitude scales as
+$\mathcal{O}(1/\sqrt{N_{\text{series}}})$. Under L2 weight decay
+(coefficient $\lambda{=}10^{-4}$), distractor weights reach an
+equilibrium whose magnitude is approximately
+$\sqrt{\sigma^2_{\text{noise}}/\lambda}$, i.e.\ they sit at a noise
+floor rather than being driven to zero.
+
+Several interventions would push distractor norms down further. (i)~More
+training data: $1/\sqrt{N}$ scaling predicts that $10{\times}$ the data
+should shrink distractor norms by ${\sim}\sqrt{10} \approx 3.2$, from
+${\sim}0.55$ toward ${\sim}0.17$, with driver norms essentially
+unchanged. We probe this prediction directly with the
+\texttt{geom\_largen} stage of our reproducer; the result is reported
+alongside the standard geometry numbers in
+\texttt{results\_paper/geom\_largen.json} when that stage has been
+run, and may be folded into this table in a future revision.
+(ii)~An $L_1$ penalty on the rows of $W$ (or any group/row-norm
+sparsity regulariser) would drive distractor norms to exact zero
+without affecting drivers materially, at the cost of an extra
+hyperparameter and a deviation from the bare \texttt{nn.Linear(C,
+$d_{\text{model}}$)} we are auditing. (iii)~Larger weight decay
+shrinks all norms, raising the driver/distractor ratio but at the
+cost of squeezing the drivers too. We do not employ any of these
+because the qualitative result---``the model down-weights
+distractors''---is already supported by the
+${\sim}2{\times}$ norm gap and the variance-share split.
+
 \subsection{Channel identifiability via linear probing}
 \label{sec:results-probe}
 
