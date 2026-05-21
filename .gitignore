@@ -22,3 +22,8 @@ paper/*.synctex.gz
 .idea/
 *.swp
 .DS_Store
+
+# claude code session scratch
+.claude/
+claude_resume
+cres_txt.txt
