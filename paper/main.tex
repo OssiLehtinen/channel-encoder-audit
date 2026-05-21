@@ -537,9 +537,23 @@ time. Within the family that uses per-channel $W_k$ on a shared
 backbone, encoder choice does not change either the convergence
 schedule or compute budget.
 
-\paragraph{LayerNorm preserves channel separation.}
+\paragraph{The residual stream carries channel identity end-to-end.}
 Linear probes at layer 3 recover each channel to $R^2 \ge 0.84$;
-LayerNorm rescales but does not linearly mix coordinates.
+LayerNorm rescales but does not linearly mix coordinates. The deeper
+reason this works is the pre-LN transformer's residual structure: each
+block applies $h \leftarrow h + \text{Attn}(\text{LN}(h))$ and
+$h \leftarrow h + \text{FFN}(\text{LN}(h))$, so an unmodified copy of
+the input embedding is carried forward through every block. The
+per-channel projections injected at the input therefore persist into
+deep hidden states via the residual stream itself, not because
+attention or FFN sublayers learn to preserve them. Whatever
+near-orthogonal channel directions \textsc{linear} establishes at the
+embedding layer are still linearly recoverable several blocks deep
+because LayerNorm only rescales them and the additive residual keeps
+them in the basis. This makes the geometric argument in this paper
+self-consistent: per-channel-$W_k$ encoders write the channels into a
+near-orthogonal subspace at layer~0, and the architecture preserves
+that subspace by construction.
 
 \paragraph{Reading for non-numerical inputs.}
 The mechanism we identify is geometric---distinct input streams need
