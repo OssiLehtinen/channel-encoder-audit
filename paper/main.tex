@@ -15,7 +15,8 @@
 \hypersetup{colorlinks=true, linkcolor=blue!50!black,
             citecolor=blue!50!black, urlcolor=blue!50!black}
 
-\title{Channel-Separated Input Encodings\\for Multi-Signal Transformers}
+\title{Input Encoders for Multi-Channel Signal Transformers:\\
+       An Empirical Audit of Subspace Geometry}
 
 \author{Ossi Lehtinen\thanks{\texttt{ossi@ocon.fi}}}
 \affil{Ocon Oy}
@@ -24,272 +25,216 @@
 \begin{document}
 \maketitle
 
+% ======================================================================
 \begin{abstract}
-Transformers consuming several time-aligned scalar signals (e.g.\
-multivariate sensor streams or multi-modal feature channels) typically
-embed each channel independently and \emph{sum} the embeddings before
-self-attention. We study the most common form of this recipe---a
-\emph{shared} scalar projection plus per-channel additive embedding---and
-show that on a benchmark where channel identity is informative it has a
-sharp ceiling that extra model capacity does not move: validation
-negative log-likelihood (NLL) stays within $0.02$ nats of $3.25$ across
-a $15\times$ parameter sweep. Two simple fixes recover the full gap and
-reach $\sim$2.42~NLL. The first, \textbf{concat}, reserves a
-non-overlapping block of embedding dimensions per channel and concatenates
-them. The second, \textbf{sum-ortho}, keeps summation but adds a soft
-orthogonality regulariser $\lambda \sum_{i\ne j}(W_i{\cdot}W_j)^2$ on the
-per-channel learned projections. Both cut the NLL gap to the uniform
-baseline by $\sim$84\% and more than double top-1 bin accuracy over naive
-sum; they match each other to within seed std. We also evaluate a
-frequency-division-multiplexing-inspired variant (\textbf{fdm}), which
-amplitude-modulates a channel-specific sinusoidal carrier inside each
-block: FDM converges faster but saturates at a worse ceiling
-(NLL $2.85$), with a grid search over carrier bands confirming the gap is
-structural, not a hyperparameter choice. Channel-as-token and
-channel-independent architectural baselines both underperform at matched
-parameter budget. A linear-probe diagnostic shows that block partitioning
-and soft orthogonality both yield input embeddings from which each raw
-channel is recoverable to $R^2 \approx 1.0$, preserved through attention
-to $R^2 \approx 0.93$ at the final layer; naive summation collapses to
-$R^2 \approx 0.24$ at every layer. We conclude that channel identity is
-what matters, and two cheap mechanisms---hard partitioning or soft
-orthogonality---are both adequate ways to supply it.
+% ======================================================================
+Transformers consuming multi-channel scalar signals must embed $C$
+simultaneous values into one $d_{\text{model}}$-dimensional vector per
+time step. We compare eight input encoders---spanning per-channel linear
+projections, an orthogonality regulariser, a nonlinear MLP stem,
+block-partitioned concatenation, channel-independent and channel-as-token
+architectures, and a projected positional encoding---on a synthetic
+benchmark where channel identity is informative and on ETTh1 as a
+real-data check. The standard per-channel linear projection
+(\texttt{nn.Linear(C, $d_{\text{model}}$)}) matches every alternative
+except one: a variant that projects the sinusoidal positional encoding
+through a learned linear layer, allowing the positional and channel
+subspaces to become orthogonal, which yields a consistent ${\sim}0.05$
+NLL gain. A gram-matrix analysis shows the task loss drives channel
+projections to near-orthogonality spontaneously and scales their norms
+proportionally to channel importance.
 Code: \url{https://github.com/OssiLehtinen/FDM-encoding}.
 \end{abstract}
 
+% ======================================================================
 \section{Introduction}
+% ======================================================================
 
-A canonical use of transformers outside language is fitting a sequence
-model to several time-aligned numerical signals: multi-sensor telemetry,
-financial factor stacks, biomedical waveforms, multi-modal embeddings
-along time. The standard recipe inherited from vision and language
-\citep{vaswani2017attention} maps each scalar input to a vector and
-\emph{adds} those vectors together---the same trick used to inject
-positional information. We will refer to this as the \emph{sum}
-encoding.
+Transformers applied to multivariate numerical signals---multi-sensor
+telemetry, financial factor stacks, biomedical waveforms---face a
+design choice at the input layer: how to embed $C$ simultaneous scalar
+channels into one $d_{\text{model}}$-dimensional vector per time step.
 
-When the input is multiple \emph{simultaneous} channels rather than a
-single token-plus-position pair, summation has a potential structural
-problem: given $\mathbf{h} = \sum_k W_k x_k$, the network cannot recover
-individual $x_k$ from $\mathbf{h}$ unless the $W_k$ occupy orthogonal
-subspaces. Nothing in the standard loss enforces this. Our empirical
-finding is specific: the default shared-projection summation used in many
-practitioner codebases does not, under training, allocate orthogonal
-subspaces on its own, and a $15\times$ parameter sweep does not fix it.
-Forcing orthogonality---either by hard block partitioning, or by a soft
-penalty on learned per-channel projections---recovers the full gap.
+\paragraph{Prior art.}
+The additive embedding recipe inherited from NLP
+\citep{vaswani2017attention} projects each input to a vector and sums.
+When the inputs are multiple channels rather than one token-plus-position
+pair, this comes in two forms: a \emph{shared} scalar projection $W$
+with per-channel additive embeddings, or a \emph{per-channel} projection
+$W_k$---the latter being mathematically a single
+\texttt{nn.Linear(C, $d_{\text{model}}$)}. Many multivariate
+time-series transformers use a linear input stem
+\citep{zhou2021informer,wu2023timesnet}, though details vary.
+Alternative architectures treat each channel as a separate token
+(iTransformer \citep{liu2024itransformer}), run independent backbones
+per channel (PatchTST \citep{nie2023patchtst}), or combine both
+(Crossformer \citep{zhang2023crossformer}). Orthogonality penalties on
+weight matrices have been used for feature decorrelation in deep
+networks \citep{bansal2018gainsorthogonality}.
 
-The paper also addresses a communications-inspired variant, FDM, in
-which each channel's scalar value amplitude-modulates a sinusoidal
-carrier at a channel-specific frequency \citep{su2021roformer}. Despite
-the name, FDM in a non-overlapping-block embedding does not prevent
-``cross-talk''---the blocks do not overlap, so there is no cross-talk to
-prevent. What the sinusoidal carrier does provide is an intra-block,
-RoPE-style positional prior. We find that this is a
-\emph{convergence-speed advantage}: FDM reaches a given NLL sooner than
-block partitioning with a learned projection, but is overtaken at
-convergence and falls further behind as the per-channel block grows
-wider.
+\paragraph{Open questions.}
+Despite the variety of approaches, several basic questions remain
+unanswered in the literature:
+(i)~Does a shared-scalar projection with a small channel embedding
+actually work, or does it have a hard ceiling?
+(ii)~Is block partitioning, an orthogonality penalty, or nonlinearity
+needed, or does a bare linear layer suffice?
+(iii)~Does the task loss itself produce channel separation without
+explicit enforcement?
+(iv)~Does the positional encoding interact with the channel encoding,
+and can this interaction be improved?
 
-We study three encoder mechanisms on the same backbone:
-\begin{itemize}
-\item \textbf{Per-channel projection, summed} (\textsc{sum-perch}):
-      keep summation but give each channel its own learned $W_k$
-      instead of a shared $W$.
-\item \textbf{Per-channel projection, summed, plus soft orthogonality}
-      (\textsc{sum-ortho}): as above, with an auxiliary loss
-      $\lambda \sum_{i \ne j}(W_i{\cdot}W_j)^2$ that pulls the $W_k$
-      toward orthogonal directions.
-\item \textbf{Block partitioning} (\textsc{concat}): reserve a
-      $d_{\text{model}}/C$-dim embedding block per channel and
-      concatenate; channel identity is a hard architectural property.
-\end{itemize}
-We also evaluate \textsc{fdm}: within each \textsc{concat} block, the
-scalar value amplitude-modulates a sinusoidal carrier at a
-channel-specific frequency, RoPE-style \citep{su2021roformer}. Finally,
-we include two architectural baselines from the time-series forecasting
-literature: \textsc{ci} (channel-independent, PatchTST-spirit
-\citep{nie2023patchtst}) and \textsc{cat} (channel-as-token,
-iTransformer-spirit \citep{liu2024itransformer}).
+\paragraph{Our contribution.}
+We compare eight encoders on a controlled synthetic benchmark designed
+to make channel identity informative, with supporting experiments on
+the public ETTh1 dataset. We find that: (i)~the per-channel linear projection matches
+every alternative at convergence; (ii)~a shared-scalar baseline has
+a sharp, capacity-independent ceiling; (iii)~the task loss drives the
+learned $W_k$ to near-orthogonal subspaces and scales their norms by
+channel importance; and (iv)~projecting the sinusoidal positional
+encoding through a learned linear layer yields a consistent further
+gain by allowing the positional and channel subspaces to become
+orthogonal.
 
-\paragraph{Key findings.}
-(i)~\textsc{sum-perch}, \textsc{sum-ortho}, and \textsc{concat} reach
-indistinguishable downstream metrics---\emph{per-channel learned
-projections are the mechanism}; whether they are summed, summed with an
-orthogonality penalty, or hard-partitioned into disjoint blocks is
-incidental.
-(ii)~An explicit gram-matrix measurement shows that \textsc{sum-perch}'s
-learned $W_k$ already converge to near-orthogonal subspaces without
-regularisation; \textsc{sum-ortho}'s penalty tightens this further but
-does not change downstream performance.
-(iii)~\textsc{fdm}'s sinusoidal carrier is a faster-convergence bias
-but a worse ceiling, because amplitude-modulating a fixed template has
-fewer degrees of freedom than a learned projection once the block is
-wide enough to exploit; the gap does not close under an 11-point
-carrier-band grid search or a learnable-$\omega_k$ variant.
-(iv)~The architectural baselines \textsc{ci} and \textsc{cat} do not
-close the gap at matched parameter budget.
-(v)~A linear-probe diagnostic, a test-time channel-mask ablation, a
-model-width scaling study, and a real-dataset run on ETTh1 all
-consistently rank encoders the same way as the downstream metric.
-
-\paragraph{Contributions.}
-\begin{itemize}
-\item A controlled benchmark with lagged cross-channel interactions
-      designed to expose whether an encoder preserves channel identity,
-      plus a real-dataset complement on ETTh1.
-\item A seven-way encoder comparison (\textsc{sum}, \textsc{sum-perch},
-      \textsc{sum-ortho}, \textsc{concat}, \textsc{fdm}, \textsc{ci},
-      \textsc{cat}) at matched sequence length and total parameter
-      budget, over 5 seeds with 100-epoch cosine-scheduled training.
-\item A decomposition of the ``soft orthogonality'' fix into its two
-      ingredients---replacing shared $W$ with per-channel $W_k$
-      (\textsc{sum-perch}) and adding an orthogonality penalty
-      (\textsc{sum-ortho})---showing that the per-channel projections
-      carry essentially all of the improvement.
-\item A direct gram-matrix measurement confirming that per-channel
-      learned projections converge to near-orthogonal subspaces
-      spontaneously under the task loss alone.
-\item A reframing of FDM-style carrier encodings as a
-      convergence-speed inductive bias rather than a better ceiling,
-      supported by a width sweep ($d_{\text{model}} \in \{64, 128, 256\}$),
-      an 11-point carrier-band grid search, and a learnable-$\omega_k$
-      control.
-\end{itemize}
-
+% ======================================================================
 \section{Method}
 \label{sec:method}
+% ======================================================================
 
-\subsection{Problem setup}
-We are given a sequence $\{x_t\}_{t=1}^T$ where $x_t \in \mathbb{R}^C$ is
-a vector of $C$ scalar channels at time $t$. We want a transformer to
-model $p(y_t \mid x_{\le t-1})$ where $y_t$ is a downstream target,
-binned into $K$ classes for a categorical generative head. The question
-we address is purely about how $x_t$ enters the residual stream.
+\subsection{Model architecture}
+
+All encoders share a common backbone: a small causal transformer with
+$d_{\text{model}}{=}64$, 4 attention heads, 3 layers, feed-forward
+width $d_{\text{ff}}{=}256$, dropout $0.1$, pre-LayerNorm, and a
+linear categorical head mapping to $K{=}32$ logits. The \emph{only}
+component that varies across experiments is the input encoder.
 
 \subsection{Encoders}
 
-\paragraph{\textsc{sum}.} Baseline:
-\[
-  \mathbf{h}(t) = \sum_k (W v_k(t) + e_k) + \mathbf{p}(t),
-\]
-with shared scalar projection $W \in \mathbb{R}^{d_{\text{model}}\times 1}$,
-learned channel embedding $e_k$, and sinusoidal positions $\mathbf{p}(t)$.
+We study eight encoders. In the definitions below, $v_k(t)$ is the
+scalar value of channel $k$ at time $t$, $\mathbf{p}(t)$ is a fixed
+sinusoidal positional encoding \citep{vaswani2017attention}, and all
+learned parameters are randomly initialised.
 
-\paragraph{\textsc{sum-perch}.} Like \textsc{sum} but with a per-channel
-learned projection $W_k \in \mathbb{R}^{d_{\text{model}}}$ and per-channel
-bias $b_k$:
+\paragraph{\textsc{sum} (ablation baseline).} Shared scalar projection
+$W \in \mathbb{R}^{d_{\text{model}}}$, learned per-channel additive
+embedding $e_k$:
 \[
-  \mathbf{h}(t) = \sum_k (W_k\,v_k(t) + b_k) + \mathbf{p}(t).
+  \mathbf{h}(t) = \sum_k \bigl(W\,v_k(t) + e_k\bigr) + \mathbf{p}(t).
 \]
-No orthogonality penalty. Channel identity is something the optimiser
-must discover through the task loss alone.
+Total encoder capacity is $\mathcal{O}(d_{\text{model}})$ regardless of
+$C$. We use this to isolate what goes wrong when the input projection
+shares weights across channels.
 
-\paragraph{\textsc{sum-ortho}.} Identical encoder to \textsc{sum-perch}
-with an auxiliary orthogonality loss
+\paragraph{\textsc{linear}.} Per-channel projection $W_k$ and bias $b_k$,
+summed:
 \[
-  L_{\text{ortho}} = \lambda \sum_{i \ne j} (W_i \cdot W_j)^2 / 2,
+  \mathbf{h}(t) = \sum_k \bigl(W_k\,v_k(t) + b_k\bigr) + \mathbf{p}(t).
 \]
-added to the task NLL; we use $\lambda {=} 10^{-2}$. The difference
-between \textsc{sum-perch} and \textsc{sum-ortho} is exactly the
-contribution of the regulariser.
+Equivalently $\mathbf{h}(t) = W\,\mathbf{v}(t) + \mathbf{b} +
+\mathbf{p}(t)$ with $W \in \mathbb{R}^{d_{\text{model}}\times C}$:
+a single \texttt{nn.Linear(C, $d_{\text{model}}$)}.
 
-\paragraph{\textsc{concat}.} Reserve
-$d_{\text{block}} {=} d_{\text{model}}/C$ dims per channel and
-concatenate:
+\paragraph{\textsc{sum-ortho}.} Same as \textsc{linear} with an
+auxiliary loss $L_{\text{ortho}} = \lambda \sum_{i \ne j}
+(W_i \cdot W_j)^2 / 2$ ($\lambda{=}10^{-2}$). This variant isolates the
+regulariser's contribution.
+
+\paragraph{\textsc{linear-ppe} (projected positional encoding).}
+Same channel encoding as \textsc{linear}, but the sinusoidal position
+passes through a learned linear layer:
 \[
-  \mathbf{e}_k(t) = W_k\,v_k(t) + b_k, \quad
-  \mathbf{h}(t) = [\mathbf{e}_0(t) \Vert \cdots \Vert \mathbf{e}_{C-1}(t)]
-                  + \mathbf{p}(t).
+  \mathbf{h}(t) = \sum_k \bigl(W_k\,v_k(t) + b_k\bigr)
+                + W_{\text{pos}}\,\mathbf{p}(t) + \mathbf{b}_{\text{pos}},
 \]
-Channel identity is a hard structural property at the input layer.
+with $W_{\text{pos}} \in \mathbb{R}^{d_{\text{model}} \times
+d_{\text{model}}}$. This lets the optimiser rotate the positional
+subspace to be orthogonal to the channel subspace. Adds
+$d_{\text{model}}^2$ parameters (4{,}096 at $d{=}64$).
 
-\paragraph{\textsc{fdm}.} Like \textsc{concat}, but the per-block
-projection is replaced by a sinusoidal carrier amplitude-modulated by
-the scalar value. For channel $k$ at time $t$, with base $b{=}10000$ and
-carrier $\omega_k$ log-spaced across $[0.5, 8.0]$:
-\begin{equation}
-  \mathbf{e}_k(t)_{2i}   = v_k(t)\,\sin\!\left(\omega_k\, t\, b^{-2i/d_{\text{block}}}\right), \quad
-  \mathbf{e}_k(t)_{2i+1} = v_k(t)\,\cos\!\left(\omega_k\, t\, b^{-2i/d_{\text{block}}}\right),
-  \label{eq:fdm}
-\end{equation}
-for $i = 0,\dots,d_{\text{block}}/2 - 1$. The encoder is parameter-free
-(learnable $\omega_k$ is evaluated as a separate variant, \textsc{fdm-learn}).
-Attention dot products between two positions in the same channel block
-become $v_k(t_1) v_k(t_2)\,\langle\phi(t_1),\phi(t_2)\rangle$, exposing
-lag-dependent intra-channel correlations directly to the softmax---a
-RoPE-style intra-channel positional prior.
+\paragraph{\textsc{mlp}.} Two-layer MLP on the channel vector:
+$\mathbf{h}(t) = W_2\,\text{GELU}(W_1\,\mathbf{v}(t) + \mathbf{b}_1)
++ \mathbf{b}_2 + \mathbf{p}(t)$, with
+$W_1 \in \mathbb{R}^{d_{\text{model}} \times C}$,
+$W_2 \in \mathbb{R}^{d_{\text{model}} \times d_{\text{model}}}$.
+Tests whether nonlinearity helps (${\sim}9{\times}$ more encoder
+parameters than \textsc{linear}).
+
+\paragraph{\textsc{concat}.} Per-channel projection into
+$d_{\text{block}} {=} d_{\text{model}}/C$ dims, concatenated
+(requires $C \mid d_{\text{model}}$):
+$\mathbf{h}(t) = [\mathbf{e}_0(t) \Vert \cdots \Vert
+\mathbf{e}_{C-1}(t)] + \mathbf{p}(t)$. Channel identity is an
+architectural invariant.
 
 \paragraph{\textsc{ci} (channel-independent).} PatchTST-spirit
-\citep{nie2023patchtst}: one causal transformer is run with shared
-weights over each channel's univariate sequence; final hidden states at
-each time are concatenated into the head. Each channel gets full
-$d_{\text{model}}$ capacity; compute scales as $\mathcal{O}(C B T^2)$.
+\citep{nie2023patchtst}: shared-weight causal transformer per channel;
+final hidden states concatenated into the head. Compute:
+$\mathcal{O}(C\,B\,T^2)$.
 
 \paragraph{\textsc{cat} (channel-as-token).} iTransformer-spirit
-\citep{liu2024itransformer}: each $(t, k)$ pair becomes its own token,
-sequence length is $C{\cdot}T$, and a standard transformer runs on the
-flattened stream. The mask is causal across time and
-\emph{bi-directional within a time step} (tokens at the same $t$ see
-each other freely; tokens at $t'>t$ are masked out), so we impose no
-arbitrary intra-time channel ordering. Prediction at time $t$ is
-obtained by mean-pooling the $C$ per-channel tokens at $t$. Attention
-cost is $\mathcal{O}((CT)^2)$; we skip this baseline at $C{=}16$.
+\citep{liu2024itransformer}: each $(t, k)$ pair is a token, sequence
+length $C{\cdot}T$, causal across time, bidirectional within a time
+step. Attention: $\mathcal{O}((CT)^2)$; skipped at $C{=}16$.
 
-\subsection{Dataset}
-We synthesise $N{=}512$ time series of length $T{=}160$ with $C$ channels
-each. Each channel is an independent stochastic process: a sum of three
-sinusoids with random frequencies in $[0.005, 0.08]$ cycles/sample
-(angular $\approx [0.03, 0.50]\,\text{rad/sample}$), random phases, and
-first-order autoregressive [AR(1)] Gaussian noise; signals are then
-standardised. The outcome is a fixed non-linear function of the
-\emph{first four} channels with two different lags,
+\subsection{Training protocol}
+
+AdamW optimiser, learning rate $3{\times}10^{-4}$ with cosine decay
+to $1\%$ of peak, weight decay $10^{-4}$, batch size 32, gradient clip
+1.0. Each configuration is run over 5 random seeds. Metrics are
+reported at the best validation NLL achieved during training (effective
+early stopping). Most experiments use 100 epochs; extended runs at 300
+epochs are reported where convergence is relevant
+(Section~\ref{sec:results-extended}).
+
+\subsection{Datasets}
+
+\paragraph{Synthetic.} $N{=}512$ time series of length $T{=}160$ with
+$C$ channels. Each channel is a sum of three sinusoids with random
+frequencies in $[0.005, 0.08]$ cycles/sample plus AR(1) noise,
+standardised. The outcome is a fixed non-linear function of the first
+four channels with lags 3 and 7:
 \[
 y_t = \tanh\!\big(s_0(t{-}3)\,s_1(t)\big)
-      + 0.6\sin\!\big(1.3\,s_2(t{-}7)\big)
-      + 0.4\,\mathbb{1}[s_3(t)>0]\,s_0(t),
+    + 0.6\sin\!\big(1.3\,s_2(t{-}7)\big)
+    + 0.4\,\mathbb{1}[s_3(t)>0]\,s_0(t),
 \]
-binned into $K{=}32$ quantile bins. Any additional channels
-($k \ge 4$) are independent distractors. The signal content occupies
-$[0.03, 0.5]\,\text{rad/sample}$; FDM carriers live in
-$[0.5, 8.0]\,\text{rad/sample}$, so the \textsc{fdm} gain is not a
-trivial resonance with the data.
+binned into $K{=}32$ quantile bins. Channels $k \ge 4$ are independent
+distractors. The task is designed so that an encoder that mixes channels
+at the input layer cannot recover the interaction structure.
 
-\subsection{Architecture and training}
-A small causal transformer encoder with $d_{\text{model}}{=}64$, 4
-heads, 3 layers, feed-forward network (FFN) width 256, dropout $0.1$,
-pre-LayerNorm. The head is a linear map to $K{=}32$ logits. Training:
-AdamW, lr $3{\times}10^{-4}$ with cosine decay to $1\%$ of peak, weight
-decay $10^{-4}$, batch size 32, gradient clip 1.0, 100 epochs. Each
-result is the mean over 5 random seeds (3 for the carrier grid).
-Metrics are reported at the best val NLL achieved during training
-(effective early stopping); trajectories are saved so convergence can be
-audited.
+\paragraph{ETTh1.} Electricity Transformer Temperature (hourly, 7
+variates). We standardise on the train split, bin the target variate
+OT into 32 quantile bins, and predict the next-step bin given all 7
+variates over $T{=}160$. The model uses $d_{\text{model}}{=}56$
+(divisible by $C{=}7$), 7 heads, $d_{\text{ff}}{=}224$; training is
+otherwise identical.
 
+% ======================================================================
 \section{Results}
+% ======================================================================
 
 \subsection{Main comparison}
 \label{sec:results-main}
 
 \input{tables/main.tex}
 
-Table~\ref{tab:main} reports all seven encoders at $C{=}4$,
-$d_{\text{model}}{=}64$. Three encoders tie at the top, within one seed
-std ($\sim$0.02 NLL): \textsc{sum-perch}, \textsc{sum-ortho}, and
-\textsc{concat}. All three more than double \textsc{sum}'s bin accuracy.
-Notably, \textsc{sum-perch} matches \textsc{sum-ortho} to four decimal
-places of NLL---the orthogonality penalty does not move downstream
-performance at all on this task. This reframes the earlier ``soft
-orthogonality'' mechanism as a small decorator on top of the real fix,
-which is simply giving each channel its own learned projection.
-\textsc{fdm} sits $\sim$0.4 nats behind the top tier, clearly beating
-\textsc{sum} but not matching what a learned per-block projection does.
-The architectural baselines \textsc{ci} and \textsc{cat} underperform
-all three top encoders at the same parameter budget, despite giving
-each channel full $d_{\text{model}}$ capacity (ci) or $C\cdot T$
-sequence length (cat).
+Table~\ref{tab:main} reports all eight encoders at $C{=}4$,
+$d_{\text{model}}{=}64$, 100 epochs. Three encoders tie at the top
+within seed std: \textsc{linear}, \textsc{sum-ortho}, and
+\textsc{concat}. \textsc{linear-ppe} converges faster, reaching
+$2.355$ at 100 epochs (still improving). \textsc{linear} matches
+\textsc{sum-ortho} to four decimal places---the orthogonality penalty
+contributes nothing.
 
-\subsection{Scaling with channel count}
+\textsc{mlp} sits between the top tier and the architectural baselines
+at 100 epochs but is still improving; at $3{\times}$ the training
+budget it converges to the same NLL (Section~\ref{sec:results-extended}).
+\textsc{ci} and \textsc{cat} underperform despite nominally giving each
+channel more capacity. The only encoder that loses decisively is
+\textsc{sum}, which lacks per-channel projections.
+
+\subsection{Channel-count scaling}
 \label{sec:results-scaling}
 
 \input{tables/scaling.tex}
@@ -303,316 +248,274 @@ $\mathcal{O}((CT)^2)$ attention cost.}
 \label{fig:scaling}
 \end{figure}
 
-All encoders degrade as $C$ grows, because channels $k \ge 4$ are
-distractors that add noise to the prediction target. The top two remain
-\textsc{sum-ortho} and \textsc{concat} at every $C$. The
-\textsc{sum-ortho}$-$\textsc{concat} tie is stable: the soft regulariser
-continues to achieve what hard partitioning does, which is notable
-because \textsc{sum-ortho} does not give the optimiser a fixed
-allocation---it must discover orthogonal $W_k$ by itself.
+All encoders degrade as $C$ grows (channels $k \ge 4$ are distractors).
+The top tier (\textsc{linear}, \textsc{sum-ortho}, \textsc{concat}) is
+stable across $C \in \{4, 8, 16\}$. The gap to \textsc{sum} widens
+rather than narrows.
 
-\subsection{Scaling with model width}
+\subsection{Model-width scaling}
 \label{sec:results-dmodel}
 
 \input{tables/dmodel.tex}
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=0.92\textwidth]{figures/dmodel_scaling.pdf}
-\caption{Scaling with $d_{\text{model}}$ at $C{=}4$.}
-\label{fig:dmodel}
-\end{figure}
+Table~\ref{tab:dmodel} varies $d_{\text{model}}$ over $\{64, 128, 256\}$
+at $C{=}4$. The \textsc{sum} ceiling is sharp: $15{\times}$ more
+parameters move NLL by less than $0.02$. \textsc{concat} scales
+strongly to $d{=}128$ before mild overfitting at $d{=}256$.
 
-Table~\ref{tab:dmodel} and Figure~\ref{fig:dmodel} vary
-$d_{\text{model}}$ over $\{64, 128, 256\}$ with
-$d_{\text{ff}} {=} 4\,d_{\text{model}}$. The picture is very clean.
-\textsc{sum} is structurally capped: total parameter count grows
-$15\times$ across the sweep, and validation NLL changes by less than
-$0.02$. No amount of width fixes rank-deficient encoding. \textsc{concat}
-scales strongly from $2.429$ at $d{=}64$ down to $2.291$ at $d{=}128$
-before mild overfitting at $d{=}256$. \textsc{fdm} plateaus between
-$2.85$ and $2.93$ and overfits hard at $d{=}256$ (best epoch 10 of 100).
-The gap between \textsc{concat} and \textsc{fdm} widens with width,
-consistent with the fixed sinusoidal template becoming a ceiling
-constraint once the block has room to learn a richer projection.
-
-\paragraph{Is it the frequency choice?}
-We ran two controls at $d_{\text{model}}{=}128$. (i)~A
-\textsc{fdm-learn} variant with $\omega_k$ as learnable parameters
-(initialised at the log-spaced defaults) changes NLL and accuracy by
-less than $10^{-3}$: diagnostics show the $\omega_k$ drift by $<1\%$
-under AdamW in 100 epochs because the gradient signal to four scalar
-frequencies is dominated by the surrounding Q/K/V/FFN weights.
-(ii)~A grid search over 11 fixed carrier bands
-$(\omega_{\min}, \omega_{\max})$ spanning $[0.03, 0.5]$ (matching the
-signal bandwidth) through $[10, 100]$ yields a best NLL of
-$2.809 \pm 0.003$ for the signal-matched band---better than the default
-$2.900$ by ${\sim}0.09$ nats, but still $0.52$ nats behind
-\textsc{concat}'s $2.291$. \emph{No fixed carrier band closes the gap.}
-
-\subsection{Orthogonality of learned projections}
+\subsection{Gram-matrix analysis: spontaneous orthogonality}
 \label{sec:results-gram}
 
-Why does \textsc{sum-perch} match \textsc{sum-ortho} on downstream
-metrics? We measure, at the end of training, the cosine of every pair
-$(W_i, W_j)$ with $i \ne j$ in the encoder's per-channel projection
-matrix.
+\textsc{linear} has no mechanism pushing the $W_k$ toward orthogonality;
+\textsc{sum-ortho} adds an explicit penalty. Both produce the same NLL
+to four decimals. We measure the cosine similarity between all pairs
+$(W_i, W_j)$ with $i \ne j$ at the end of training.
 
 \begin{table}[h]
 \centering
-\caption{Learned per-channel $W_k$ at the end of training ($C{=}4$,
-mean over 5 seeds). \textsc{sum-perch} is the encoder with no
-regulariser; \textsc{sum-ortho} adds $\lambda{=}10^{-2}$ on the
-off-diagonal gram entries.}
+\caption{Learned per-channel $W_k$ geometry ($C{=}4$, mean over 5 seeds).}
 \label{tab:gram}
 \begin{tabular}{lccc}
 \toprule
 encoder      & best val NLL & $\max_{i\ne j}|\cos(W_i,W_j)|$ & mean $|\cos|$ \\
 \midrule
-\textsc{sum-perch} & $2.4215$ & $0.152$ & $0.054$ \\
+\textsc{linear}    & $2.4215$ & $0.152$ & $0.054$ \\
 \textsc{sum-ortho} & $2.4214$ & $0.058$ & $0.021$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Without any penalty, the learned $W_k$ already end training with mean
-off-diagonal cosine $0.054$; the regulariser pushes that down to $0.021$
-but does not change the downstream NLL by more than $10^{-4}$. We
-interpret this as evidence that on tasks where channel identity is
-informative, the downstream loss itself provides enough gradient
-pressure to drive per-channel projections toward orthogonal subspaces,
-once those projections exist as independent parameters. The penalty
-\emph{accelerates} this discovery but is not what makes it happen.
+Without any penalty the learned $W_k$ are already near-orthogonal (mean
+off-diagonal cosine $0.054$). The regulariser tightens this to $0.021$
+but does not improve downstream NLL. The task loss itself provides
+enough gradient pressure to separate the per-channel projections once
+they exist as free parameters.
+
+\subsection{Encoding space allocation}
+\label{sec:results-space}
+
+Beyond separating channels, does the model allocate more encoding space
+to channels that matter more? We measure $\|W_k\|$ norms and per-channel
+variance fractions $\text{Var}(W_k \cdot v_k) / \sum_j \text{Var}(W_j
+\cdot v_j)$ at $C \in \{4, 8, 16\}$.
+
+\begin{table}[h]
+\centering
+\caption{Encoding space allocation (mean over 5 seeds). Channels 0--3
+drive the outcome; the rest are distractors.}
+\label{tab:space}
+\begin{tabular}{lcccc}
+\toprule
+& \multicolumn{2}{c}{$\|W_k\|$ norm} & \multicolumn{2}{c}{variance fraction} \\
+\cmidrule(lr){2-3} \cmidrule(lr){4-5}
+& drivers (0--3) & distractors & drivers & distractors \\
+\midrule
+$C{=}8$  & $1.14$ & $0.71$ & $72.3\%$ & $27.7\%$ \\
+$C{=}16$ & $1.20$ & $0.74$ & $46.6\%$ & $53.4\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Driver channels receive ${\sim}1.6{\times}$ larger norms than
+distractors, a ratio stable across $C{=}8$ and $C{=}16$. At $C{=}8$
+the four drivers capture $72\%$ of the embedding variance. Within
+drivers, the norm ordering mirrors the outcome formula: ch0 and ch1
+(multiplicative interaction) get the largest norms, ch3 (indicator only)
+the smallest. The linear projection thus both separates channels
+\emph{and} weights them by task relevance.
 
 \subsection{Channel identifiability via linear probing}
 \label{sec:results-probe}
 
 \input{tables/probe.tex}
 
-We freeze a trained model and fit closed-form ridge probes
-$\mathbf{h} \mapsto \hat{x}$ from the hidden state at layer $\ell$ to
-the raw input $x$, reporting held-out per-channel $R^2$
-(Table~\ref{tab:probe}). All four per-channel-$W_k$ encoders
-(\textsc{sum-perch}, \textsc{sum-ortho}, \textsc{concat}, \textsc{fdm})
-achieve essentially perfect recovery at the input layer; at layer~3,
-all four still admit mean $R^2 \ge 0.92$. \textsc{sum} collapses to
-$R^2 \approx 0.24$ at every depth. The
-recovery-versus-ceiling correspondence is clean: the encoders whose
-residual stream preserves channel identity through attention are the
-ones that win on the downstream task.
+Closed-form ridge probes from the hidden state to the raw input show
+that all per-channel-$W_k$ encoders achieve $R^2 \approx 1.0$ at the
+input layer and $R^2 \ge 0.92$ at layer 3. \textsc{sum} collapses to
+$R^2 \approx 0.24$ at every depth.
 
-\subsection{Real-dataset complement: ETTh1}
-\label{sec:results-etth1}
-
-\input{tables/etth1.tex}
-
-To check that the synthetic-benchmark ordering is not an artefact of the
-task construction, we repeat the comparison on the standard ETTh1
-dataset (Electricity Transformer Temperature, hourly sampling, 7
-variates) from the Informer/Autoformer/iTransformer benchmarks. We
-standardise each variate on a train split, bin the target variate
-\texttt{OT} (oil temperature) into 32 quantile bins from the train
-split, and pose the task as next-step bin prediction of \texttt{OT}
-given all 7 variates over a $T{=}160$ window. The model uses
-$d_{\text{model}}{=}56$ (divisible by $C{=}7$), 7 heads, 3 layers,
-$d_{\text{ff}}{=}224$; training is otherwise identical (100 epochs,
-cosine decay, AdamW, 5 seeds).
-
-Table~\ref{tab:etth1} shows the same qualitative ordering as the
-synthetic benchmark. \textsc{sum} fails catastrophically (NLL near the
-$\ln 32 \approx 3.466$ ceiling, accuracy $<\!1\%$): the shared-projection
-plus additive-channel-embedding recipe cannot extract useful structure
-from seven temperature/load variates. The three per-channel-$W_k$
-encoders (\textsc{sum-perch}, \textsc{sum-ortho}, \textsc{concat}) are
-again tied at the top (NLL $\sim$0.58, accuracy $\sim$0.79), leaving
-\textsc{fdm}, \textsc{ci}, and \textsc{cat} behind. The absolute-NLL
-gap between \textsc{sum} and the top tier ($\sim$3.1 nats) is even
-larger on ETTh1 than on the synthetic task ($\sim$0.8 nats), because
-real signals cover more of the categorical head's output space and
-\textsc{sum} drops to effectively random.
-
-\subsection{Robustness to missing channels}
+\subsection{Channel masking}
 \label{sec:results-mask}
 
 \input{tables/mask.tex}
 
-At test time we zero one channel at a time and re-evaluate
-(Table~\ref{tab:mask}). The three top-tier encoders (\textsc{concat},
-\textsc{sum-perch}, \textsc{sum-ortho}) exhibit the sharpest and most
-interpretable per-channel signatures, with near-identical profiles:
-masking ch0 (which appears in two interaction terms in the outcome)
-drops accuracy by $\sim$0.11, ch1 by $\sim$0.09, ch2 by $\sim$0.09, and
-ch3 (lightest involvement) by $\sim$0.01. \textsc{fdm} is noticeably
-less sharp. \textsc{ci} and the fixed-mask \textsc{cat} give partial
-per-channel structure but smaller drops; \textsc{sum} is nearly flat.
+Zeroing one channel at test time (Table~\ref{tab:mask}), the top-tier
+encoders show sharp, interpretable per-channel accuracy drops that
+match the outcome formula. \textsc{sum} is nearly flat.
 
+\subsection{Extended training and positional projection}
+\label{sec:results-extended}
+
+At 100 epochs, \textsc{mlp} and \textsc{linear-ppe} are still
+improving. To determine ceiling vs.\ convergence-speed differences, we
+rerun at $3{\times}$ the training budget (300 epochs, $C{=}4$):
+
+\begin{table}[h]
+\centering
+\caption{Extended training (300 epochs, cosine decay, $C{=}4$, 5 seeds).}
+\label{tab:extended}
+\begin{tabular}{lcc}
+\toprule
+encoder & val NLL $\downarrow$ & val acc $\uparrow$ \\
+\midrule
+\textbf{\textsc{linear-ppe}} & $\mathbf{2.120 \pm 0.033}$ & $\mathbf{0.258 \pm 0.009}$ \\
+\textsc{linear}    & $2.169 \pm 0.014$ & $0.248 \pm 0.004$ \\
+\textsc{sum-ortho} & $2.170 \pm 0.014$ & $0.246 \pm 0.004$ \\
+\textsc{mlp}       & $2.170 \pm 0.032$ & $0.244 \pm 0.010$ \\
+\textsc{concat}    & $2.183 \pm 0.032$ & $0.243 \pm 0.006$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textsc{linear}, \textsc{sum-ortho}, \textsc{mlp}, and \textsc{concat}
+converge to the same NLL within seed noise. The MLP stem's
+$9{\times}$ extra parameters offer no benefit---nonlinearity at the
+input layer is redundant. \textsc{linear-ppe} pulls ahead by
+${\sim}0.05$ NLL, a gap exceeding seed std. The improvement comes from
+the positional subspace rotating away from the channel directions,
+reducing interference at the embedding layer. The channel encoding
+itself remains a single linear layer.
+
+\subsection{Real-data validation: ETTh1}
+\label{sec:results-etth1}
+
+\input{tables/etth1.tex}
+
+Table~\ref{tab:etth1} confirms the synthetic ordering on ETTh1. The
+three per-channel-$W_k$ encoders (\textsc{linear}, \textsc{sum-ortho},
+\textsc{concat}) tie at the top; \textsc{mlp} joins within noise.
+\textsc{sum} fails catastrophically (NLL near $\ln 32 \approx 3.47$).
+
+% ======================================================================
 \section{Discussion}
+% ======================================================================
 
-\paragraph{Three mechanisms converge to the same operating point.}
-\textsc{sum-perch}, \textsc{sum-ortho}, and \textsc{concat} are all tied
-on downstream NLL, accuracy, $C$-scaling behaviour, probe recoverability,
-and mask localisation. They are very different surface recipes: hard
-block partitioning with concatenation (\textsc{concat}); per-channel
-learned projections summed together (\textsc{sum-perch}); the same
-summation with an orthogonality penalty on the projections
-(\textsc{sum-ortho}). The common feature is that each channel is
-represented by its own learned direction in embedding space. Whether
-those directions are enforced to be disjoint by architecture, nudged
-toward orthogonal by a regulariser, or simply free to be learned
-independently turns out not to matter, because the downstream loss
-itself drives them toward near-orthogonal subspaces once they are
-free parameters (Section~\ref{sec:results-gram}, Table~\ref{tab:gram}:
-mean off-diagonal cosine $\approx 0.05$ for \textsc{sum-perch} with no
-penalty).
+\paragraph{\textsc{linear} is not new.}
+Stacking per-channel projections $W_k$ and summing is
+\texttt{nn.Linear(C, $d_{\text{model}}$)}---the most obvious default.
+Our contribution is not proposing it but auditing it: at matched
+parameter budget, it matches every alternative (block-partitioned,
+orthogonality-regularised, nonlinear, channel-independent,
+channel-as-token). Only the shared-projection \textsc{sum} loses.
 
-\paragraph{Practical implication.}
-\textsc{sum-perch} is the cheapest retrofit for legacy sum-encoding
-pipelines: a one-line change ($W \rightarrow W_k$ indexed by channel),
-$\mathcal{O}(C \cdot d_{\text{model}})$ extra parameters, no auxiliary
-loss, and none of \textsc{concat}'s $C \mid d_{\text{model}}$
-architectural constraint. \textsc{sum-ortho} is equivalent at
-convergence but adds an auxiliary loss term that does not change the
-outcome on our tasks; we suggest its main use is as a mild
-training-speed accelerator when convergence budgets are tight.
+\paragraph{What fails about the shared-scalar baseline.}
+\textsc{sum} combines a shared $W$ with a small additive $e_k$. Under
+$15{\times}$ parameter scaling its NLL moves by $<0.02$. The bottleneck
+is not summation---\textsc{linear} also sums---but the shared
+projection, which cannot represent distinct channel directions.
 
-\paragraph{What the FDM carrier buys (and doesn't).}
-FDM is not what it sounds like. In communications, frequency-division
-multiplexing prevents cross-talk on a \emph{shared} medium; in our
-setting the blocks do not overlap, so there is no cross-talk to prevent
-in the first place. What the sinusoidal carrier actually provides is an
-intra-block RoPE-style positional prior: attention dot products between
-two positions in the same channel gain a lag-dependent $\cos$ factor
-without needing the model to learn the demix from the additive position
-channel. Our experiments show this is a \emph{convergence-speed
-advantage}: \textsc{fdm} reaches a given NLL sooner than \textsc{concat}
-early in training (faster descent), but is eventually overtaken. At
-convergence \textsc{concat} wins cleanly, and at larger
-$d_{\text{model}}$ the gap widens because the fixed template cannot use
-the extra width the way a learned projection can. A grid search over
-11 fixed carrier bands and a learnable-$\omega_k$ variant both fail to
-close this gap; the constraint is structural, not a hyperparameter
-miss.
+\paragraph{Orthogonality is spontaneous.}
+\textsc{linear}'s $W_k$ reach mean off-diagonal cosine ${\approx}0.05$
+with no penalty; the regulariser tightens to ${\approx}0.02$ without
+changing NLL. The task loss provides the gradient pressure.
+
+\paragraph{Nonlinearity is redundant.}
+\textsc{mlp} ($9{\times}$ more encoder params) converges more slowly to
+the same NLL. A linear projection of the channel vector is sufficient.
+
+\paragraph{Importance weighting is automatic.}
+At $C{=}8$, driver channels get $1.6{\times}$ larger $\|W_k\|$ norms
+and $72\%$ of the variance. The model separates \emph{and} weights.
+
+\paragraph{Positional--channel orthogonality matters.}
+The one variant beating \textsc{linear} is \textsc{linear-ppe}:
+projecting sinusoidal positions through a learned linear layer allows
+the positional subspace to avoid the channel subspace. The gain
+(${\sim}0.05$ NLL at $C{=}4$) is modest but consistent, and follows
+from the same geometric principle that drives channel--channel
+orthogonality.
 
 \paragraph{Architectural baselines.}
 \textsc{ci} and \textsc{cat} give each channel nominally more capacity
-than the block-partitioned encoders (full $d_{\text{model}}$ per channel
-and per-$(t,k)$ token respectively) but both underperform at matched
-parameter count. \textsc{ci} shares a single backbone across channels;
-the bottleneck is the final-layer head's limited capacity to combine
-$C$ per-channel streams. \textsc{cat} pays $\mathcal{O}((CT)^2)$
-attention and gains nothing for it on this task, presumably because the
-relevant structure is simultaneity of channels at a given $t$, not
-long-range temporal dependencies across channels at different times.
+but underperform at matched parameters. \textsc{ci}'s bottleneck is the
+head combining $C$ streams; \textsc{cat} pays $\mathcal{O}((CT)^2)$
+attention for no gain on this task.
 
-\paragraph{What exactly fails about the \textsc{sum} baseline.}
-Our \textsc{sum} baseline combines a shared scalar projection
-$W \in \mathbb{R}^{d_{\text{model}}}$ with a per-channel additive
-embedding $e_k$; this is the recipe most commonly seen in practitioner
-codebases, and its total encoder capacity is $\mathcal{O}(d_{\text{model}})$
-regardless of $C$. Under $15\times$ total-parameter scaling, its
-validation NLL moves by less than $0.02$ nats. \textsc{sum-perch} (same
-sum structure but with \emph{per-channel} learned projections $W_k$,
-no orthogonality penalty) and \textsc{sum-ortho} (per-channel $W_k$
-\emph{plus} the penalty) let us decompose the failure: the per-channel
-$W_k$ upgrade contributes most of the improvement, and the orthogonality
-penalty contributes the last bit. The bottleneck of \textsc{sum} is
-therefore not summation per se---\textsc{sum-ortho} also sums---but the
-combination of a shared scalar projection with a trivially small
-per-channel identifier (the additive embedding $e_k$), which leaves no
-gradient signal that would encourage allocation of orthogonal subspaces.
+\paragraph{LayerNorm preserves channel separation.}
+Linear probes at layer 3 recover each channel to $R^2 \ge 0.92$;
+LayerNorm rescales but does not linearly mix coordinates.
 
-\paragraph{LayerNorm does not destroy channel separation.}
-Standard pre-LayerNorm could in principle mix channel blocks (it
-computes statistics across the full $d_{\text{model}}$ axis), but
-empirically the linear probes at layer 3 recover each channel to
-$R^2 \ge 0.92$. LayerNorm rescales each coordinate by a statistic
-derived from all coordinates but does not linearly combine them; the
-directional block structure survives.
+\paragraph{Reading for non-numerical inputs.}
+The mechanism we identify is geometric---distinct input streams need
+approximately orthogonal subspaces in $d_{\text{model}}$ so the model
+can recover stream-of-origin---and is encoding-agnostic. For
+multi-field categorical inputs, bag-of-embeddings pooling is the
+discrete analog of \textsc{sum}: field identity is irrecoverable
+unless the per-field embedding tables happen to land in disjoint
+subspaces, and an off-diagonal Gram penalty across embedding matrices
+would transfer directly. For multimodal tokens, per-modality
+projection heads (already standard) are the fix; the sharper claim
+is that they must remain \emph{linearly separable in the residual
+stream}, not merely come from different distributions. The
+\textsc{linear-ppe} finding---that projecting positional signals into
+a learned subspace beats adding them---is the most readily
+transferable: it applies equally to discrete sequence models where
+position competes with token semantics for the same coordinates. We
+do not test any of this; the variance-contribution diagnostic in
+particular does not translate cleanly to discrete inputs and would
+need a probe-based analog.
 
+% ======================================================================
 \section{Limitations}
+% ======================================================================
 
 \begin{itemize}
-\item The benchmark is synthetic and deliberately constructed to make
-      channel identity informative. On tasks where channels are truly
-      exchangeable or redundant, \textsc{sum} may not be penalised.
-\item Scales tested: $d_{\text{model}} \in \{64, 128, 256\}$,
-      $C \in \{4, 8, 16\}$, up to ${\sim}2.4\text{M}$ parameters. At
-      larger model scales the interplay between encoders and overfitting
-      may change.
-\item The \textsc{cat} baseline is skipped at $C{=}16$ for compute
-      reasons; comparing it at matched attention budget rather than
-      matched parameters would be a fairer test.
-\item Carrier hyperparameters for \textsc{fdm} were searched but we did
-      not tune every design knob (carrier ladder base, per-block
-      LayerNorm). A per-block group-norm variant may alter the
-      \textsc{fdm} ceiling.
-\item Five seeds per configuration; for the marginal differences inside
-      the top tier, a larger seed budget would tighten confidence
-      intervals.
+\item The synthetic benchmark deliberately makes channel identity
+      informative. On tasks with exchangeable channels, \textsc{sum}
+      may not be penalised.
+\item Main sweep at $d_{\text{model}}{=}64$, $C \in \{4,8,16\}$;
+      ETTh1 at $d_{\text{model}}{=}56$, $C{=}7$. The $d_{\text{model}}$
+      sweep covers only \textsc{sum} and \textsc{concat}. At larger
+      scales the overfitting dynamics may change.
+\item \textsc{cat} is skipped at $C{=}16$ (synthetic) and single-seed
+      at $C{=}7$ (ETTh1) for compute reasons.
+\item \textsc{linear-ppe} was tested at $C \in \{4, 16\}$; the
+      300-epoch comparison is at $C{=}4$ only.
+\item Five seeds per configuration; marginal differences in the top
+      tier may need more seeds to resolve.
 \end{itemize}
 
+% ======================================================================
 \section{Related work}
+% ======================================================================
 
 \paragraph{Channel-as-token and channel-independent TSF.}
-iTransformer \citep{liu2024itransformer} transposes the problem so each
-variate is a token with full $d_{\text{model}}$ capacity; PatchTST
-\citep{nie2023patchtst} runs an independent transformer per channel with
-shared weights; Crossformer \citep{zhang2023crossformer} does both
-directions. These approaches all preserve per-channel capacity at the
-cost of longer sequences or per-channel compute. The block-partitioned
-encoding studied here sits in a different corner of the design space:
-$C$ channels share one $d_{\text{model}}$-wide token at each time, with
-partitioning and identity preserved \emph{within} the embedding rather
-than across tokens.
+iTransformer \citep{liu2024itransformer} treats each variate as a
+token; PatchTST \citep{nie2023patchtst} runs independent backbones per
+channel; Crossformer \citep{zhang2023crossformer} does both. These
+preserve per-channel capacity at the cost of longer sequences or
+per-channel compute. Our encoders share one token per time step.
 
-\paragraph{Rotary position embedding (RoPE).}
-\citet{su2021roformer} encodes positional information with rotation by
-frequency-graded angles. \textsc{fdm} re-uses the per-dimension
-frequency ladder but applies it within each channel's block, with the
-\emph{channel} carrier setting the outer scale.
-
-\paragraph{Perceiver IO and Fourier-feature input encodings.}
-\citet{jaegle2021perceiver} attaches explicit Fourier features per
-modality to disambiguate inputs to a shared latent attention
-bottleneck. \textsc{fdm} differs in that the modality identifier and
-the signal value are \emph{multiplied} (amplitude modulation) rather
-than concatenated, and dimensions are physically partitioned rather
-than augmented.
+\paragraph{Linear input projections in TSF.}
+Many multivariate transformers use a linear stem
+\citep{zhou2021informer,wu2023timesnet}. We isolate this bare
+projection and compare it explicitly against the shared-scalar
+alternative and architectural baselines.
 
 \paragraph{Orthogonality regularisation.}
-Soft-orthogonality penalties on weight matrices have been used for
-conditioning and feature decorrelation
-\citep{bansal2018gainsorthogonality}. \textsc{sum-ortho} applies the
-same idea specifically to per-channel input projections; to our
-knowledge this is a new use case in the multi-signal embedding
-literature.
+\citet{bansal2018gainsorthogonality} use soft-orthogonality penalties
+for feature decorrelation. We apply the same idea to per-channel input
+projections and find it unnecessary: the task loss produces the same
+geometry.
 
-\paragraph{Frequency-domain input encoders.}
-TimesNet \citep{wu2023timesnet} processes time-series in the frequency
-domain with an explicit fast Fourier transform (FFT). Our work is dual:
-we perform an inverse-FFT-like \emph{encoding} of a single value onto a
-per-channel frequency, rather than transforming the signal itself.
-
+% ======================================================================
 \section{Conclusion}
+% ======================================================================
 
-On tasks where channel identity is informative, the common
-shared-projection summation recipe has a capacity-independent ceiling.
-The fix is to give each channel its own learned projection: three
-different dressings of this idea---free-summed (\textsc{sum-perch}),
-orthogonality-regularised (\textsc{sum-ortho}), or hard-partitioned
-into blocks (\textsc{concat})---all converge to the same downstream
-operating point, because the learned projections spontaneously
-orient into near-orthogonal subspaces under the task loss. The
-frequency-division analogy (\textsc{fdm}) provides a
-faster-convergence-but-lower-ceiling variant: useful as an inductive
-bias at small capacity, a constraint at larger ones. The architectural
-alternatives from the time-series forecasting literature
-(channel-as-token, channel-independent) underperform these three at
-matched parameter budget.
-
-The most practical recommendation is \textsc{sum-perch}: a one-line
-change to existing sum-encoding pipelines, no architectural constraint,
-no auxiliary loss. It matches everything fancier we measured.
+On tasks where channel identity is informative, a per-channel linear
+projection (\texttt{nn.Linear(C, $d_{\text{model}}$)}) matches every
+more elaborate encoder we tested. The task loss drives the channel
+projections to near-orthogonality and scales their norms by importance.
+A shared-scalar projection has a capacity-independent ceiling.
+Nonlinearity, block partitioning, orthogonality penalties,
+channel-independent and channel-as-token architectures---none improve
+on the bare linear layer. The one modification that does help is
+projecting the sinusoidal positional encoding through a learned linear
+layer (\textsc{linear-ppe}), which allows the positional and channel
+subspaces to become orthogonal. The practical recommendation is simple:
+use \texttt{nn.Linear(C, $d_{\text{model}}$)} for the channel encoding,
+optionally with a projected positional encoding, and spend the
+complexity budget elsewhere.
 
 \bibliographystyle{plainnat}
 \begin{thebibliography}{9}
@@ -622,16 +525,11 @@ A.~Vaswani, N.~Shazeer, N.~Parmar, J.~Uszkoreit, L.~Jones, A.~N. Gomez,
 \newblock Attention is all you need.
 \newblock In \emph{NeurIPS}, 2017.
 
-\bibitem[Su et al.(2021)]{su2021roformer}
-J.~Su, Y.~Lu, S.~Pan, B.~Wen, and Y.~Liu.
-\newblock {RoFormer}: enhanced transformer with rotary position embedding.
-\newblock \emph{arXiv:2104.09864}, 2021.
-
-\bibitem[Jaegle et al.(2021)]{jaegle2021perceiver}
-A.~Jaegle et al.
-\newblock {Perceiver IO}: a general architecture for structured inputs and
-  outputs.
-\newblock \emph{arXiv:2107.14795}, 2021.
+\bibitem[Zhou et al.(2021)]{zhou2021informer}
+H.~Zhou, S.~Zhang, J.~Peng, S.~Zhang, J.~Li, H.~Xiong, and W.~Zhang.
+\newblock {Informer}: beyond efficient transformer for long sequence
+  time-series forecasting.
+\newblock In \emph{AAAI}, 2021.
 
 \bibitem[Wu et al.(2023)]{wu2023timesnet}
 H.~Wu, T.~Hu, Y.~Liu, H.~Zhou, J.~Wang, and M.~Long.
