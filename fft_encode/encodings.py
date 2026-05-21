@@ -75,9 +75,27 @@ class SumOrthoEncoding(nn.Module):
         return emb
 
     def aux_loss(self) -> torch.Tensor:
+        if self.ortho_lambda == 0.0:
+            return torch.zeros((), device=self.W.device)
         gram = self.W @ self.W.T  # (C, C)
         off = gram - torch.diag_embed(torch.diagonal(gram))
         return self.ortho_lambda * (off ** 2).sum() / 2
+
+    def gram_stats(self) -> dict:
+        """Report structure of the learned per-channel projections."""
+        with torch.no_grad():
+            W = self.W.detach()
+            norms = W.norm(dim=-1)
+            Wn = W / (norms.unsqueeze(-1) + 1e-12)
+            cos = Wn @ Wn.T  # (C, C)
+            off_mask = ~torch.eye(W.shape[0], dtype=torch.bool, device=W.device)
+            off_abs = cos.abs()[off_mask]
+            return dict(
+                norms=norms.cpu().tolist(),
+                max_off_abs_cos=float(off_abs.max()),
+                mean_off_abs_cos=float(off_abs.mean()),
+                cos_matrix=cos.cpu().tolist(),
+            )
 
 
 class ConcatEncoding(nn.Module):

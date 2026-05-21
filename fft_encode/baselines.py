@@ -96,18 +96,18 @@ class ChannelAsTokenTransformer(nn.Module):
         self.head = nn.Linear(d_model, n_bins)
 
     def _causal_mask(self, T: int, device) -> torch.Tensor:
+        """Causal across time, bidirectional within a time step.
+
+        Token at (t, k) attends to any (t', k') with t' <= t. Channels at
+        the same t are simultaneous and see each other; there is no
+        arbitrary intra-time ordering."""
         C = self.C
-        # positions flattened as t*C + k; time_index = positions // C
         n = T * C
         pos = torch.arange(n, device=device)
         t_idx = pos // C
-        # query at i, key at j: allow iff t_j < t_i OR (t_j == t_i and j <= i)
         t_i = t_idx.view(-1, 1)
         t_j = t_idx.view(1, -1)
-        i = pos.view(-1, 1)
-        j = pos.view(1, -1)
-        allow = (t_j < t_i) | ((t_j == t_i) & (j <= i))
-        # nn.TransformerEncoder expects True = mask out (not attend)
+        allow = t_j <= t_i
         return ~allow
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -121,13 +121,14 @@ class ChannelAsTokenTransformer(nn.Module):
         h = h.reshape(B, T * C, self.d_model)
         mask = self._causal_mask(T, x.device)
         for layer in self.layers:
-            # is_causal=False because our mask is richer than a pure upper triangle
+            # Bidirectional within-time mask, not a pure upper triangle
             h = layer(h, src_mask=mask, is_causal=False)
         h = self.norm(h)
-        # last-channel token at each time: index t*C + (C-1)
-        last_of_time = torch.arange(T, device=x.device) * C + (C - 1)
-        h_t = h[:, last_of_time, :]
-        return self.head(h_t)
+        # Mean-pool the C tokens at each time for prediction at time t.
+        # (Under the bidirectional within-time mask, no single channel has
+        # privileged access to the others, so pooling is the natural choice.)
+        h = h.reshape(B, T, C, self.d_model).mean(dim=2)
+        return self.head(h)
 
     def aux_loss(self) -> torch.Tensor:
         return _zero_aux(next(self.parameters()).device)

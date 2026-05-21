@@ -116,6 +116,11 @@ def build_model(kind: str, n_channels: int, d_model: int, n_bins: int, **kw):
         enc = SumOrthoEncoding(n_channels=n_channels, d_model=d_model,
                                ortho_lambda=ortho_lambda)
         return SignalTransformer(enc, d_model=d_model, n_bins=n_bins, **kw)
+    if kind == "sum-perch":
+        kw.pop("ortho_lambda", None)
+        enc = SumOrthoEncoding(n_channels=n_channels, d_model=d_model,
+                               ortho_lambda=0.0)
+        return SignalTransformer(enc, d_model=d_model, n_bins=n_bins, **kw)
     if kind in ("ci", "cat"):
         from .baselines import (
             ChannelAsTokenTransformer,

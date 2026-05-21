@@ -206,7 +206,7 @@ def do_probe(args, device) -> list:
     # ci / cat have a fundamentally different hidden-state layout (per-
     # channel stream or per-(t,k) token) so a single-stream probe does not
     # apply. Restrict probing to single-stream encoder variants.
-    probable = {"sum", "concat", "fdm", "fdm-learn", "sum-ortho"}
+    probable = {"sum", "concat", "fdm", "fdm-learn", "sum-ortho", "sum-perch"}
     encoders = [e for e in args.encoders if e in probable]
     results = []
     for enc in encoders:
@@ -350,7 +350,8 @@ def main():
     p.add_argument("--d-models", type=int, nargs="+", dest="d_models",
                    default=[64, 128, 256])
     p.add_argument("--encoders", nargs="+",
-                   default=["sum", "concat", "fdm", "sum-ortho", "ci", "cat"])
+                   default=["sum", "sum-perch", "sum-ortho",
+                            "concat", "fdm", "ci", "cat"])
     p.add_argument("--encoders-dmodel", nargs="+",
                    default=["sum", "concat", "fdm", "fdm-learn"])
     p.add_argument("--skip", nargs="+", default=[],

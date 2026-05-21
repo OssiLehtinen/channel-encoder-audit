@@ -31,32 +31,61 @@ best val NLL achieved during training (effective early stopping).
 Val NLL = validation negative log-likelihood (cross-entropy of the
 categorical generative head); val acc = top-1 bin accuracy.
 
-| encoder                         | class         | enc. params | val NLL ↓        | val acc ↑        |
-| ------------------------------- | ------------- | ----------- | ---------------- | ---------------- |
-| `sum` (baseline)                | summation     | 320         | 3.253 ± 0.007    | 0.092 ± 0.003    |
-| `cat` (channel-as-token)        | arch.         | 320         | 3.088 ± 0.040    | 0.122 ± 0.008    |
-| `ci` (channel-independent)      | arch.         | 2,112       | 3.051 ± 0.008    | 0.140 ± 0.003    |
-| `fdm` (block + carrier)         | block         | 0           | 2.854 ± 0.018    | 0.145 ± 0.004    |
+| encoder                          | class        | enc. params | val NLL ↓        | val acc ↑        |
+| -------------------------------- | ------------ | ----------- | ---------------- | ---------------- |
+| `sum` (baseline, shared W)       | summation    | 320         | 3.253 ± 0.007    | 0.092 ± 0.003    |
+| `ci` (channel-independent)       | arch.        | 2,112       | 3.051 ± 0.008    | 0.140 ± 0.003    |
+| `fdm` (block + carrier)          | block        | 0           | 2.854 ± 0.018    | 0.145 ± 0.004    |
+| `cat` (channel-as-token, fixed mask) | arch.    | 320         | 2.738 ± 0.040    | 0.161 ± 0.006    |
 | **`concat`** (block, no carrier) | block        | 128         | **2.429 ± 0.038**| **0.201 ± 0.007**|
-| **`sum-ortho`** (λ=1e-2)        | sum + reg     | 512         | **2.422 ± 0.021**| **0.202 ± 0.004**|
+| **`sum-perch`** (per-channel W_k) | summation   | 512         | **2.422 ± 0.021**| **0.202 ± 0.004**|
+| **`sum-ortho`** (perch + λ=1e-2) | sum + reg    | 512         | **2.422 ± 0.021**| **0.202 ± 0.004**|
 
 Random baseline: NLL = ln 32 ≈ 3.466, acc = 1/32 ≈ 0.031.
 
 Linear-probe channel recovery (R² from a frozen hidden state back to the
 raw input, mean over channels):
 
-| encoder     | input layer | after 3 layers |
-| ----------- | ----------- | -------------- |
-| `sum`       | 0.240       | 0.234          |
-| `fdm`       | 1.000       | 0.925          |
-| `concat`    | 0.999       | **0.937**      |
-| `sum-ortho` | 1.000       | 0.926          |
+| encoder      | input layer | after 3 layers |
+| ------------ | ----------- | -------------- |
+| `sum`        | 0.240       | 0.234          |
+| `fdm`        | 1.000       | 0.925          |
+| `concat`     | 0.999       | **0.937**      |
+| `sum-perch`  | 1.000       | 0.926          |
+| `sum-ortho`  | 1.000       | 0.926          |
 
-Two cheap mechanisms tie for first: hard **block partitioning** (`concat`)
-and **soft orthogonality** (`sum-ortho`, a λ · Σ(W_i·W_j)² penalty on
-per-channel projections). `fdm`'s sinusoidal carrier is a faster-convergence
-inductive bias but a lower ceiling. `sum` never closes the gap — no amount
-of width helps it (15× more parameters moves NLL by <0.02).
+### Real-data validation: ETTh1
+
+Same ordering reproduces on ETTh1 (7 variates, next-step bin prediction
+of oil temperature):
+
+| encoder      | val NLL | val acc |
+| ------------ | ------- | ------- |
+| `sum`        | 3.636 ± 0.060 | 0.008 ± 0.008 |
+| `ci`         | 0.825 ± 0.046 | 0.678 ± 0.023 |
+| `fdm`        | 0.720 ± 0.034 | 0.725 ± 0.013 |
+| **`concat`** | **0.582 ± 0.015** | **0.787 ± 0.008** |
+| **`sum-perch`** | **0.587 ± 0.014** | **0.793 ± 0.008** |
+| **`sum-ortho`** | **0.588 ± 0.014** | **0.794 ± 0.009** |
+
+`sum` fails catastrophically on real data; all three per-channel-`W_k`
+encoders tie at the top.
+
+**Three mechanisms tie for first**: hard **block partitioning** (`concat`),
+plain **per-channel learned projection** (`sum-perch` — replace shared `W`
+with per-channel `W_k` and sum), and `sum-perch` plus a **soft orthogonality
+penalty** (`sum-ortho`, λ · Σ(W_i·W_j)² on the projections). They are
+indistinguishable to four decimals of NLL.
+
+A direct gram-matrix measurement (`fft_encode/gram_analysis.py`) shows
+that `sum-perch`'s learned `W_k` already converge to mean pairwise cosine
+0.054 (near-orthogonal) without any regulariser; the penalty tightens
+this to 0.021 but doesn't change downstream metrics. **Per-channel
+projections are the mechanism; the orthogonality penalty is decorative.**
+
+`fdm`'s sinusoidal carrier is a faster-convergence inductive bias but a
+lower ceiling; `sum`'s shared-W recipe never closes the gap (15× more
+parameters moves NLL by <0.02).
 
 ### Scaling with model width
 

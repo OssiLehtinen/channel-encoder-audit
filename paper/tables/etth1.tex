@@ -1,0 +1,27 @@
+\begin{table}[t]
+\centering
+\caption{ETTh1 next-step bin prediction. 7 variates, $T{=}160$, $K{=}32$
+quantile bins on the target OT (oil temperature) computed from the train
+split. Target is the next-step bin of OT; all 7 variates are inputs.
+$d_{\text{model}}{=}56$, 7 heads, 3 layers, $d_{\text{ff}}{=}224$; 100
+epochs, cosine decay, 5 seeds, mean $\pm$ std of best val NLL.}
+\label{tab:etth1}
+\begin{tabular}{lcc}
+\toprule
+encoder     & val NLL $\downarrow$ & val acc $\uparrow$ \\
+\midrule
+\textsc{sum}       & $3.636 \pm 0.060$  & $0.008 \pm 0.008$ \\
+\textsc{ci}        & $0.825 \pm 0.046$  & $0.678 \pm 0.023$ \\
+\textsc{fdm}       & $0.720 \pm 0.034$  & $0.725 \pm 0.013$ \\
+\textsc{cat}$^\dagger$ & $0.581$         & $0.780$ \\
+\midrule
+\textbf{\textsc{concat}}    & $\mathbf{0.582 \pm 0.015}$ & $\mathbf{0.787 \pm 0.008}$ \\
+\textbf{\textsc{sum-perch}} & $\mathbf{0.587 \pm 0.014}$ & $\mathbf{0.793 \pm 0.008}$ \\
+\textbf{\textsc{sum-ortho}} & $\mathbf{0.588 \pm 0.014}$ & $\mathbf{0.794 \pm 0.009}$ \\
+\bottomrule
+\end{tabular}
+\\[2pt]
+\footnotesize $\dagger$ \textsc{cat} single-seed result only
+(attention cost $\mathcal{O}((CT)^2)$; each seed takes $\sim$25 min at
+$C{=}7$).
+\end{table}

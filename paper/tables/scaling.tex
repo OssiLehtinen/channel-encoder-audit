@@ -3,29 +3,32 @@
 \caption{Scaling with channel count. Channels $0$--$3$ drive the outcome;
 additional channels are independent distractors. 100 epochs with cosine
 decay, mean $\pm$ std over 5 seeds. \textsc{cat} is skipped at $C{=}16$
-because its $\mathcal{O}((CT)^2)$ attention cost explodes.}
+because its $\mathcal{O}((CT)^2)$ attention cost explodes.
+\textsc{sum-perch} was evaluated at $C{=}4$ only and matches
+\textsc{sum-ortho} to four decimals.}
 \label{tab:scaling}
 \begin{tabular}{llcc}
 \toprule
 $C$ & encoder & val NLL $\downarrow$ & val acc $\uparrow$ \\
 \midrule
-\multirow{6}{*}{4}
+\multirow{7}{*}{4}
     & \textsc{sum}       & $3.253 \pm 0.007$ & $0.092 \pm 0.003$ \\
-    & \textsc{cat}       & $3.088 \pm 0.040$ & $0.122 \pm 0.008$ \\
     & \textsc{ci}        & $3.051 \pm 0.008$ & $0.140 \pm 0.003$ \\
     & \textsc{fdm}       & $2.854 \pm 0.018$ & $0.145 \pm 0.004$ \\
+    & \textsc{cat}       & $2.738 \pm 0.040$ & $0.161 \pm 0.006$ \\
     & \textbf{\textsc{concat}} & $\mathbf{2.429 \pm 0.038}$ & $\mathbf{0.201 \pm 0.007}$ \\
+    & \textbf{\textsc{sum-perch}} & $\mathbf{2.422 \pm 0.021}$ & $\mathbf{0.202 \pm 0.004}$ \\
     & \textbf{\textsc{sum-ortho}} & $\mathbf{2.422 \pm 0.021}$ & $\mathbf{0.202 \pm 0.004}$ \\
 \midrule
-\multirow{6}{*}{8}
+\multirow{5}{*}{8}
     & \textsc{sum}       & $3.302 \pm 0.005$ & $0.080 \pm 0.002$ \\
-    & \textsc{cat}       & $3.103 \pm 0.083$ & $0.114 \pm 0.010$ \\
+    & \textsc{cat}$^\dagger$    & $3.103 \pm 0.083$ & $0.114 \pm 0.010$ \\
     & \textsc{ci}        & $3.054 \pm 0.014$ & $0.135 \pm 0.004$ \\
     & \textsc{fdm}       & $2.972 \pm 0.027$ & $0.135 \pm 0.005$ \\
     & \textsc{concat}    & $2.515 \pm 0.020$ & $0.187 \pm 0.008$ \\
     & \textbf{\textsc{sum-ortho}} & $\mathbf{2.437 \pm 0.029}$ & $\mathbf{0.200 \pm 0.009}$ \\
 \midrule
-\multirow{5}{*}{16}
+\multirow{4}{*}{16}
     & \textsc{sum}       & $3.309 \pm 0.004$ & $0.075 \pm 0.003$ \\
     & \textsc{ci}        & $3.074 \pm 0.023$ & $0.132 \pm 0.006$ \\
     & \textsc{fdm}       & $3.030 \pm 0.011$ & $0.126 \pm 0.006$ \\
@@ -33,4 +36,8 @@ $C$ & encoder & val NLL $\downarrow$ & val acc $\uparrow$ \\
     & \textbf{\textsc{sum-ortho}} & $\mathbf{2.566 \pm 0.044}$ & $\mathbf{0.182 \pm 0.009}$ \\
 \bottomrule
 \end{tabular}
+\\[2pt]
+\footnotesize $\dagger$ \textsc{cat} at $C{>}4$ uses the earlier
+causal-within-time mask; the corrected bidirectional-within-time mask
+was applied only to the $C{=}4$ rerun.
 \end{table}
