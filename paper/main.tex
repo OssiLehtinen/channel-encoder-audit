@@ -721,11 +721,45 @@ channel-independent, channel-as-token) on the synthetic benchmark,
 and ties at the top of the per-channel-$W_k$ tier on ETTh1. Only the
 shared-projection \textsc{sum} consistently loses.
 
-\paragraph{What fails about the shared-scalar baseline.}
-\textsc{sum} combines a shared $W$ with a small additive $e_k$. Under
-$15{\times}$ parameter scaling its NLL moves by $<0.02$. The bottleneck
-is not summation---\textsc{linear} also sums---but the shared
-projection, which cannot represent distinct channel directions.
+\paragraph{What fails about the shared-scalar baseline: information
+loss at the encoder.}
+The failure of \textsc{sum} is not gradual or capacity-limited; it is
+algebraic and complete. With shared scalar projection $W$ and constant
+per-channel embeddings $e_k$, the encoder simplifies to
+\[
+\mathbf{h}(t) = W\!\sum_k v_k(t)
+              + \underbrace{\sum_k e_k}_{\text{constant}}
+              + \mathbf{p}(t),
+\]
+i.e.\ at every time step the encoder depends on the inputs only
+through their pointwise sum $S(t) = \sum_k v_k(t)$. The map
+$(v_0(t), \dots, v_{C-1}(t)) \mapsto S(t)$ is many-to-one with a
+$(C{-}1)$-dimensional null space: at every position $t$, $C{-}1$
+channels' worth of degrees of freedom are destroyed before the
+transformer sees the data. The per-channel embeddings $e_k$ are
+constants and do not carry input-dependent information; they merge
+into a single offset and cannot tag which channel contributed what.
+
+This loss is irrecoverable downstream. Any function the transformer
+computes on $\mathbf{h}(t)$ is a function of $S(t)$, so by the
+data-processing inequality the model's prediction can contain no more
+information about $(v_0, \dots, v_{C-1})$ than $S$ alone does. The
+$15{\times}$ $d_{\text{model}}$ scaling in Table~\ref{tab:dmodel}
+moves \textsc{sum}'s NLL by less than $0.005$ precisely because the
+extra parameters never get to see the lost information.
+
+The probe makes the floor explicit. For independent unit-variance
+channels at $C{=}4$, the correlation between any single channel $v_k$
+and the channel sum $S$ is $\rho^2 = 1/C = 0.25$; that is the
+theoretical ceiling for linearly recovering one channel from $S$. The
+layer-0 probe recovers \textsc{sum}'s channels at $R^2 \approx 0.24$
+(Table~\ref{tab:probe}), essentially touching the floor. The
+``ceiling'' \textsc{sum} hits is therefore not an optimisation
+artefact but the information-theoretic limit of what survives a
+shared scalar projection followed by summation. The bottleneck is not
+summation per se---\textsc{linear} also sums---but the \emph{shared}
+projection, which collapses the per-channel directions into one
+before the sum.
 
 \paragraph{Orthogonality is spontaneous.}
 \textsc{linear}'s $W_k$ reach mean off-diagonal cosine ${\approx}0.035$
