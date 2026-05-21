@@ -244,7 +244,7 @@ passes through a learned linear layer:
 with $W_{\text{pos}} \in \mathbb{R}^{d_{\text{model}} \times
 d_{\text{model}}}$. This lets the optimiser rotate the positional
 subspace to be orthogonal to the channel subspace. Adds
-$d_{\text{model}}^2$ parameters (4{,}096 at $d{=}64$).
+$d_{\text{model}}^2 + d_{\text{model}}$ parameters (4{,}160 at $d{=}64$).
 
 \paragraph{\textsc{mlp}.} Two-layer MLP on the channel vector:
 $\mathbf{h}(t) = W_2\,\text{GELU}(W_1\,\mathbf{v}(t) + \mathbf{b}_1)
