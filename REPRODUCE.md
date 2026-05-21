@@ -19,7 +19,7 @@ files produced for the submitted manuscript.
 |---------------|----------------------------|------------------|
 | `main`        | `main.json`                | Synthetic sweep: $C \in \{4,8,16\}$ × 8 encoders × 5 seeds. Feeds Table 1 and Figure 1. |
 | `dmodel`      | `dmodel.json`              | $d_{\text{model}} \in \{64,128,256\}$, `sum` + `concat`, 5 seeds. Feeds the $d_{\text{model}}$ scaling table. |
-| `geometry`    | `geometry.json`            | `linear` at all $C$, `sum-ortho` at $C=4$. Reports $W_k$ norms, off-diagonal Gram entries, variance fractions. Feeds the gram and encoding-space tables. |
+| `geometry`    | `geometry.json`            | `linear` at all $C$, `linear-ortho` at $C=4$. Reports $W_k$ norms, off-diagonal Gram entries, variance fractions. Feeds the gram and encoding-space tables. |
 | `probe`       | `probe.json`               | Closed-form ridge probe recovering raw channels from hidden states (layer 0 and 3). |
 | `mask`        | `mask.json`                | Per-channel zeroing at test time. |
 | `etth1`       | `etth1.json`               | ETTh1 real-data validation, all encoders × 5 seeds at $d_{\text{model}}=56$. ETTh1.csv is fetched on first use and cached under `~/.cache/fft_encode/`. |

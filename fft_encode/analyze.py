@@ -79,12 +79,21 @@ def load_all(out_dir: str) -> dict:
 # Statistical helpers
 # ---------------------------------------------------------------------------
 
+_ENCODER_ALIAS = {"sum-perch": "linear", "sum-ortho": "linear-ortho"}
+
+
 def _run_field(r: dict, key: str):
     """Read a config field that can live either at top level (etth1) or
-    nested under ``cfg`` (main/dmodel/etc)."""
+    nested under ``cfg`` (main/dmodel/etc). Encoder names are canonicalised
+    so the legacy ``sum-perch`` / ``sum-ortho`` runs match the renamed
+    ``linear`` / ``linear-ortho`` references in comparisons."""
     if key in r:
-        return r[key]
-    return r.get("cfg", {}).get(key)
+        v = r[key]
+    else:
+        v = r.get("cfg", {}).get(key)
+    if key == "encoder" and v in _ENCODER_ALIAS:
+        return _ENCODER_ALIAS[v]
+    return v
 
 
 def paired_diffs(data, stage: str, A: str, B: str, **filters) -> dict:
@@ -215,13 +224,13 @@ COMPARISONS = [
 
     ("main", "mlp",        "linear",     {"C": 16}, "mlp vs linear at C=16"),
     ("main", "mlp",        "concat",     {"C": 16}, "mlp vs concat at C=16"),
-    ("main", "mlp",        "sum-ortho",  {"C": 16}, "mlp vs sum-ortho at C=16"),
+    ("main", "mlp",        "linear-ortho",  {"C": 16}, "mlp vs sum-ortho at C=16"),
     ("main", "mlp",        "linear-ppe", {"C": 16}, "mlp vs linear-ppe at C=16"),
 
     # ETTh1
     ("etth1", "cat", "linear",     {}, "cat vs linear on ETTh1"),
     ("etth1", "cat", "concat",     {}, "cat vs concat on ETTh1"),
-    ("etth1", "cat", "sum-ortho",  {}, "cat vs sum-ortho on ETTh1"),
+    ("etth1", "cat", "linear-ortho",  {}, "cat vs sum-ortho on ETTh1"),
     ("etth1", "cat", "mlp",        {}, "cat vs mlp on ETTh1"),
     ("etth1", "cat", "linear-ppe", {}, "cat vs linear-ppe on ETTh1"),
 
@@ -236,7 +245,7 @@ COMPARISONS = [
     # main_largen at C=16, N=5120
     ("main_largen", "mlp", "linear",     {"C": 16}, "mlp vs linear at C=16, N=5120"),
     ("main_largen", "mlp", "concat",     {"C": 16}, "mlp vs concat at C=16, N=5120"),
-    ("main_largen", "mlp", "sum-ortho",  {"C": 16}, "mlp vs sum-ortho at C=16, N=5120"),
+    ("main_largen", "mlp", "linear-ortho",  {"C": 16}, "mlp vs sum-ortho at C=16, N=5120"),
     ("main_largen", "mlp", "linear-ppe", {"C": 16}, "mlp vs linear-ppe at C=16, N=5120"),
 
     # Bias ablation (canonical 5 seeds only — not extended)
@@ -304,12 +313,13 @@ def geometry_summary(data: dict) -> dict:
             block["distractor_variance_fraction"] = bootstrap_scalar(dst_var, rng=rng)
         out[f"linear_C{C}"] = block
 
-    # sum-ortho at C=4
-    runs = data["geometry"].get("sum_ortho", [])
+    # linear-ortho at C=4 (legacy ``sum_ortho`` key also accepted)
+    runs = (data["geometry"].get("linear_ortho", [])
+            or data["geometry"].get("sum_ortho", []))
     if runs:
         mc = np.array([r["mean_off_abs_cos"] for r in runs])
         xc = np.array([r["max_off_abs_cos"] for r in runs])
-        out["sum_ortho_C4"] = dict(
+        out["linear_ortho_C4"] = dict(
             n_seeds=len(runs),
             mean_off_abs_cos=bootstrap_scalar(mc, rng=rng),
             max_off_abs_cos=bootstrap_scalar(xc, rng=rng),

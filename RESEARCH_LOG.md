@@ -39,22 +39,22 @@ The 12-epoch initial training turned out to be undertrained for `concat`;
 a 100-epoch cosine sweep (`7d89cc8`) substantially rewrote the headline
 table. Three new baselines came in alongside:
 
-- `sum-ortho`: `sum` with a soft orthogonality regulariser on the learned
+- `linear-ortho`: `sum` with a soft orthogonality regulariser on the learned
   per-channel projections.
 - `ci` (channel-independent, PatchTST-spirit): shared-weight transformer
   per channel.
 - `cat` (channel-as-token, iTransformer-spirit): each $(t, k)$ a token.
 
-Headline at this point: `concat` and `sum-ortho` tied at NLL 2.42, both
+Headline at this point: `concat` and `linear-ortho` tied at NLL 2.42, both
 cleanly above `fdm` (2.85), with `sum` structurally capped at 3.25
 regardless of width. `ci` and `cat` underperformed at matched compute.
 
 ETTh1 was added as a real-data check (`f5146be`) and an off-diagonal Gram
 analysis confirmed the learned per-channel projections were already
-near-orthogonal under `sum-ortho`.
+near-orthogonal under `linear-ortho`.
 
 At this point the paper was still framed around FDM as the headline
-encoder, with `concat`/`sum-ortho` presented as alternatives that happen
+encoder, with `concat`/`linear-ortho` presented as alternatives that happen
 to perform similarly.
 
 ## Phase 3 — The pivot: from FDM to subspace geometry (May 11)
@@ -70,7 +70,7 @@ user would write. There was no architectural novelty there.
 the manuscript around a geometric reading: distinct input streams need
 approximately orthogonal subspaces in $d_{\text{model}}$ so the model
 can recover stream-of-origin. The shared-projection `sum` baseline is the
-one that violates this; everything else (`linear`, `sum-ortho`, `concat`,
+one that violates this; everything else (`linear`, `linear-ortho`, `concat`,
 new `mlp` stem, etc.) is some way of preserving channel identity at the
 input layer.
 
@@ -152,7 +152,7 @@ Several substantive deepening commits followed in quick succession:
   as the unpaired CIs suggested. Several places in the paper softened
   during `0fcf1b9` were then resharpened with the proper test.
 - `9bb2fc8` extended paired tests to `cat` on ETTh1 (decisive vs
-  `mlp`/`linear-ppe`, borderline vs `linear`/`concat`/`sum-ortho`) and
+  `mlp`/`linear-ppe`, borderline vs `linear`/`concat`/`linear-ortho`) and
   `mlp` at $C=16$ (decisive vs the whole linear family, $p \in \{0.0003,
   0.008\}$, 5/5). The same commit added an explicit policy paragraph to
   §3.3 — report unpaired CIs, test paired where the unpaired comparison

@@ -14,7 +14,7 @@ Stages (default: all)
     main        synthetic sweep: C in {4,8,16} x 8 encoders x N seeds
     dmodel      d_model in {64,128,256} x [sum, concat] x N seeds, C=4
     geometry    W_k norms / gram / variance fractions
-                (linear at all Cs + sum-ortho at C=4)
+                (linear at all Cs + linear-ortho at C=4)
     probe       linear-probe channel recovery, C=4
     mask        test-time channel masking, C=4
     etth1       ETTh1 real-data validation, C=7, d_model=56
@@ -78,19 +78,20 @@ from .real_data import ETTh1Dataset
 from .runner import train_and_trace, train_and_trace_mse
 
 # Canonical encoder list, paper order.
-ENCODERS = ["sum", "linear", "sum-ortho", "mlp", "linear-ppe",
+ENCODERS = ["sum", "linear", "linear-ortho", "mlp", "linear-ppe",
             "concat", "ci", "cat"]
 # Encoders the linear probe applies to (single-stream hidden states).
-ENCODERS_PROBE = ["sum", "linear", "sum-ortho", "mlp", "linear-ppe", "concat"]
+ENCODERS_PROBE = ["sum", "linear", "linear-ortho", "mlp", "linear-ppe", "concat"]
 # Encoders varied in the d_model sweep.
 ENCODERS_DMODEL = ["sum", "concat"]
 
 ALL_STAGES = ["main", "dmodel", "geometry", "probe", "mask", "etth1",
               "convergence", "bias", "geom_largen", "main_largen",
-              "pospro_geometry", "extra_seeds", "main_mse"]
+              "pospro_geometry", "extra_seeds", "main_mse",
+              "mlp_geometry"]
 
 EXTRA_DMODEL_ENCODERS = ["sum", "concat", "linear", "linear-ppe",
-                         "mlp", "sum-ortho"]
+                         "mlp", "linear-ortho"]
 
 
 def header(s: str) -> None:
@@ -156,7 +157,7 @@ def stage_dmodel(args, device) -> list:
 def stage_geometry(args, device) -> dict:
     header("geometry: W_k norms / off-diagonal Gram / variance fractions")
     linear_runs = []   # linear at C in {4,8,16}
-    ortho_runs = []    # sum-ortho at C=4 (for gram comparison)
+    ortho_runs = []    # linear-ortho at C=4 (for gram comparison)
 
     for C in args.Cs:
         for s in range(args.seeds):
@@ -184,7 +185,7 @@ def stage_geometry(args, device) -> dict:
                   f"({time.time()-t0:.1f}s)", flush=True)
 
     for s in range(args.seeds):
-        cfg = RunCfg(encoder="sum-ortho", C=4, seed=s,
+        cfg = RunCfg(encoder="linear-ortho", C=4, seed=s,
                      epochs=args.epochs, n_series=args.n_series)
         t0 = time.time()
         r, model, _ = train_and_trace(
@@ -197,12 +198,12 @@ def stage_geometry(args, device) -> dict:
             max_off_abs_cos=gram["max_off_abs_cos"],
             mean_off_abs_cos=gram["mean_off_abs_cos"],
         ))
-        print(f"  [sum-ortho C= 4 s={s}] "
+        print(f"  [linear-ortho C= 4 s={s}] "
               f"nll={r['best_val_nll']:.4f} "
               f"mean|cos|={gram['mean_off_abs_cos']:.4f} "
               f"({time.time()-t0:.1f}s)", flush=True)
 
-    return dict(linear=linear_runs, sum_ortho=ortho_runs)
+    return dict(linear=linear_runs, linear_ortho=ortho_runs)
 
 
 # ---------------------------------------------------------------------------
@@ -400,7 +401,7 @@ def stage_geom_largen(args, device) -> list:
 def stage_main_largen(args, device) -> list:
     """Test whether the C=16 encoder ranking observed at the main-sweep
     N=512 persists when the model is no longer data-limited. Trains the
-    top-tier encoders (linear, mlp, sum-ortho, linear-ppe, concat by
+    top-tier encoders (linear, mlp, linear-ortho, linear-ppe, concat by
     default) at the configured C with n_series=N_large, otherwise
     identical to the main stage. Lets us paired-test mlp's lead at
     C=16 in the data-rich regime."""
@@ -550,6 +551,54 @@ def stage_pospro_geometry(args, device) -> dict:
                   f"rank_99={rank_99} "
                   f"min_angle={angles_deg.min():.1f}° "
                   f"frac(P in span W)={frac_in_span_W:.3f} "
+                  f"({time.time()-t0:.1f}s)", flush=True)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Stage 7d2: gram analysis on the MLP encoder's first-layer columns
+# ---------------------------------------------------------------------------
+
+def stage_mlp_geometry(args, device) -> list:
+    """Gram-matrix analysis on the MLP encoder's first-layer columns,
+    which play the role of per-channel input directions before the
+    nonlinearity. Answers: does the MLP stem learn near-orthogonal
+    channel input directions like the linear family does (in which
+    case the orthogonality is a feature of the task pressure, not of
+    the stem flexibility), or does it use overlapping channel
+    directions and rely on the GELU + second linear to separate
+    channels differently?"""
+    header(f"mlp_geometry: mlp at C in {args.mlp_geom_Cs}, "
+           f"{args.mlp_geom_seeds} seeds")
+    out = []
+    for C in args.mlp_geom_Cs:
+        for s in range(args.mlp_geom_seeds):
+            cfg = RunCfg(encoder="mlp", C=C, seed=s,
+                         epochs=args.epochs, n_series=args.n_series)
+            t0 = time.time()
+            r, model, _ = train_and_trace(
+                cfg, device, log_every=args.log_every, return_model=True)
+            # First-layer weight is (d_hidden, C); columns are channel
+            # directions in d_hidden space. Compare as if they were W_k.
+            W1 = model.encoder.mlp[0].weight.detach().cpu().numpy()
+            W_cols = W1.T  # (C, d_hidden)
+            norms = np.linalg.norm(W_cols, axis=-1)
+            Wn = W_cols / (norms[:, None] + 1e-12)
+            cos = Wn @ Wn.T
+            off_mask = ~np.eye(C, dtype=bool)
+            off_abs = np.abs(cos)[off_mask]
+            out.append(dict(
+                C=C, seed=s,
+                best_val_nll=r["best_val_nll"],
+                norms=norms.tolist(),
+                max_off_abs_cos=float(off_abs.max()),
+                mean_off_abs_cos=float(off_abs.mean()),
+                cos_matrix=cos.tolist(),
+            ))
+            print(f"  [mlp W1 C={C:>2} s={s}] "
+                  f"nll={r['best_val_nll']:.4f} "
+                  f"mean|cos|={off_abs.mean():.4f} "
+                  f"max|cos|={off_abs.max():.4f} "
                   f"({time.time()-t0:.1f}s)", flush=True)
     return out
 
@@ -706,12 +755,12 @@ def stage_extra_seeds(args, device) -> None:
                   f"mean|cos|={gram['mean_off_abs_cos']:.4f} "
                   f"({time.time()-t0:.1f}s)", flush=True)
 
-        # 6) geometry at this seed: linear at C in {4,8,16} and sum-ortho
+        # 6) geometry at this seed: linear at C in {4,8,16} and linear-ortho
         # at C=4. Saves the gram + variance diagnostics so future
         # paired/bootstrap analysis on Table 5/6 numbers has more seeds.
         geom_path = os.path.join(out_dir, f"geometry_s{s:03d}.json")
         if not os.path.exists(geom_path):
-            geom_out: dict = {"linear": [], "sum_ortho": []}
+            geom_out: dict = {"linear": [], "linear_ortho": []}
             for C in args.Cs:
                 cfg = RunCfg(encoder="linear", C=C, seed=s,
                              epochs=args.epochs, n_series=args.n_series)
@@ -734,20 +783,20 @@ def stage_extra_seeds(args, device) -> None:
                       f"nll={r['best_val_nll']:.4f} "
                       f"mean|cos|={gram['mean_off_abs_cos']:.4f} "
                       f"({time.time()-t0:.1f}s)", flush=True)
-            cfg = RunCfg(encoder="sum-ortho", C=4, seed=s,
+            cfg = RunCfg(encoder="linear-ortho", C=4, seed=s,
                          epochs=args.epochs, n_series=args.n_series)
             t0 = time.time()
             r, model, _ = train_and_trace(
                 cfg, device, log_every=args.log_every, return_model=True)
             gram = model.encoder.gram_stats()
-            geom_out["sum_ortho"].append(dict(
+            geom_out["linear_ortho"].append(dict(
                 C=4, seed=s,
                 best_val_nll=r["best_val_nll"],
                 norms=gram["norms"],
                 max_off_abs_cos=gram["max_off_abs_cos"],
                 mean_off_abs_cos=gram["mean_off_abs_cos"],
             ))
-            print(f"  [geometry sum-ortho C= 4 s={s}] "
+            print(f"  [geometry linear-ortho C= 4 s={s}] "
                   f"nll={r['best_val_nll']:.4f} "
                   f"mean|cos|={gram['mean_off_abs_cos']:.4f} "
                   f"({time.time()-t0:.1f}s)", flush=True)
@@ -854,7 +903,7 @@ def stage_convergence(main_runs: list) -> list:
     header("convergence: epochs-to-target derived from main traces")
     groups = defaultdict(list)
     for r in main_runs:
-        groups[(r["cfg"]["encoder"], r["cfg"]["C"])].append(r)
+        groups[(_canon(r["cfg"]["encoder"]), r["cfg"]["C"])].append(r)
 
     def first_at(trace, threshold):
         for ep, nll in zip(trace["epochs"], trace["val_nll"]):
@@ -896,7 +945,7 @@ def stage_convergence(main_runs: list) -> list:
 def aggregate_main(runs: list) -> list:
     g = defaultdict(list)
     for r in runs:
-        g[(r["cfg"]["encoder"], r["cfg"]["C"])].append(r)
+        g[(_canon(r["cfg"]["encoder"]), r["cfg"]["C"])].append(r)
     out = []
     for (enc, C), rs in sorted(g.items()):
         nlls = [r["best_val_nll"] for r in rs]
@@ -907,6 +956,15 @@ def aggregate_main(runs: list) -> list:
             acc_mean=float(np.mean(accs)), acc_std=float(np.std(accs)),
         ))
     return out
+
+
+_ENCODER_ALIAS = {"sum-perch": "linear", "sum-ortho": "linear-ortho"}
+
+
+def _canon(enc: str) -> str:
+    """Canonicalise legacy encoder names so summaries from JSON written
+    pre-rename display the current names."""
+    return _ENCODER_ALIAS.get(enc, enc)
 
 
 def write_summary(out_dir: str, results: dict) -> None:
@@ -931,7 +989,7 @@ def write_summary(out_dir: str, results: dict) -> None:
         lines.append("=" * 70)
         g = defaultdict(list)
         for r in results["dmodel"]:
-            g[(r["cfg"]["encoder"], r["cfg"]["d_model"])].append(r)
+            g[(_canon(r["cfg"]["encoder"]), r["cfg"]["d_model"])].append(r)
         lines.append(f"  {'encoder':>10}  {'d_model':>7}  {'nll':>17}")
         for (enc, dm), rs in sorted(g.items()):
             nlls = [r["best_val_nll"] for r in rs]
@@ -959,11 +1017,14 @@ def write_summary(out_dir: str, results: dict) -> None:
                              f"{np.mean(norms[:4]) / np.mean(norms[4:]):.3f}")
                 lines.append(f"    driver var fraction = "
                              f"{np.sum(fracs[:4]):.3f}")
-        rs = results["geometry"]["sum_ortho"]
+        # Accept either of the legacy key ``sum_ortho`` or the renamed
+        # ``linear_ortho`` so that pre- and post-rename JSONs both load.
+        rs = (results["geometry"].get("linear_ortho", [])
+              or results["geometry"].get("sum_ortho", []))
         if rs:
             mc = np.mean([r["mean_off_abs_cos"] for r in rs])
             xc = np.mean([r["max_off_abs_cos"] for r in rs])
-            lines.append(f"\n  sum-ortho, C=4: "
+            lines.append(f"\n  linear-ortho, C=4: "
                          f"mean|cos|={mc:.4f}, max|cos|={xc:.4f}")
 
     if "probe" in results:
@@ -974,7 +1035,7 @@ def write_summary(out_dir: str, results: dict) -> None:
         for r in results["probe"]:
             for p in r["probes"]:
                 vals = ", ".join(f"{x:.3f}" for x in p["r2_per_channel"])
-                lines.append(f"  {r['encoder']:>10}  {p['layer']:>5}  "
+                lines.append(f"  {_canon(r['encoder']):>10}  {p['layer']:>5}  "
                              f"[{vals}]  ({p['r2_mean']:.3f})")
 
     if "mask" in results:
@@ -986,7 +1047,7 @@ def write_summary(out_dir: str, results: dict) -> None:
         for r in results["mask"]:
             mk = ", ".join(f"{p['val_acc']:.3f}"
                            for p in r["per_channel"])
-            lines.append(f"  {r['encoder']:>10}  {r['base_acc']:>9.3f}  "
+            lines.append(f"  {_canon(r['encoder']):>10}  {r['base_acc']:>9.3f}  "
                          f"[{mk}]")
 
     if "etth1" in results:
@@ -995,7 +1056,7 @@ def write_summary(out_dir: str, results: dict) -> None:
         lines.append("=" * 70)
         g = defaultdict(list)
         for r in results["etth1"]:
-            g[r["encoder"]].append(r)
+            g[_canon(r["encoder"])].append(r)
         lines.append(f"  {'encoder':>10}  {'nll':>17}  {'acc':>17}")
         for enc, rs in sorted(g.items()):
             nlls = [r["best_val_nll"] for r in rs]
@@ -1035,7 +1096,7 @@ def write_summary(out_dir: str, results: dict) -> None:
         lines.append("=" * 70)
         g = defaultdict(list)
         for r in results["main_mse"]:
-            g[(r["cfg"]["encoder"], r["cfg"]["C"])].append(r)
+            g[(_canon(r["cfg"]["encoder"]), r["cfg"]["C"])].append(r)
         for key in sorted(g.keys(), key=lambda k: (k[1], k[0])):
             enc, C = key
             rs = g[key]
@@ -1053,7 +1114,7 @@ def write_summary(out_dir: str, results: dict) -> None:
         lines.append("=" * 70)
         g = defaultdict(list)
         for r in results["main_largen"]:
-            g[(r["cfg"]["encoder"], r["cfg"]["C"],
+            g[(_canon(r["cfg"]["encoder"]), r["cfg"]["C"],
                r["cfg"]["n_series"])].append(r)
         for key in sorted(g.keys()):
             enc, C, N = key
@@ -1093,7 +1154,7 @@ def write_summary(out_dir: str, results: dict) -> None:
         lines.append("=" * 70)
         g = defaultdict(list)
         for r in results["bias"]:
-            g[r["encoder"]].append(r)
+            g[_canon(r["encoder"])].append(r)
         lines.append(f"  {'encoder':>14}  {'nll':>17}  {'mean|cos|':>11}  "
                      f"{'max|cos|':>10}")
         for enc, rs in sorted(g.items()):
@@ -1104,6 +1165,29 @@ def write_summary(out_dir: str, results: dict) -> None:
                          f"{np.mean(nlls):.4f}±{np.std(nlls):.4f}  "
                          f"{np.mean(mc):.4f}  {np.mean(xc):.4f}")
 
+    if "mlp_geometry" in results:
+        lines.append("\n" + "=" * 70)
+        lines.append("MLP FIRST-LAYER COLUMN GEOMETRY (W_1 cols of mlp)")
+        lines.append("=" * 70)
+        g = defaultdict(list)
+        for r in results["mlp_geometry"]:
+            g[r["C"]].append(r)
+        lines.append(f"  {'C':>3}  {'nll':>17}  {'mean|cos|':>17}  "
+                     f"{'max|cos|':>17}  n")
+        for C in sorted(g):
+            rs = g[C]
+            nlls = [r["best_val_nll"] for r in rs]
+            mcs = [r["mean_off_abs_cos"] for r in rs]
+            xcs = [r["max_off_abs_cos"] for r in rs]
+            def _s(xs):
+                return (np.std(xs, ddof=1) if len(xs) > 1 else 0)
+            lines.append(
+                f"  {C:>3}  "
+                f"{np.mean(nlls):.4f}±{_s(nlls):.4f}  "
+                f"{np.mean(mcs):.4f}±{_s(mcs):.4f}  "
+                f"{np.mean(xcs):.4f}±{_s(xcs):.4f}  {len(rs)}"
+            )
+
     if "convergence" in results:
         lines.append("\n" + "=" * 70)
         lines.append("CONVERGENCE (epochs to within +0.05 NLL of own best)")
@@ -1113,7 +1197,7 @@ def write_summary(out_dir: str, results: dict) -> None:
         for r in results["convergence"]:
             ep = (f"{r['mean_ep_to_plus_05']:.0f}"
                   if r["mean_ep_to_plus_05"] is not None else "-")
-            lines.append(f"  {r['encoder']:>10}  {r['C']:>3}  "
+            lines.append(f"  {_canon(r['encoder']):>10}  {r['C']:>3}  "
                          f"{ep:>11}  {r['mean_seconds']:>8.1f}")
 
     text = "\n".join(lines)
@@ -1147,7 +1231,7 @@ def main() -> None:
     p.add_argument("--geom-largen-seeds", type=int, default=1,
                    help="seed count for the geom_largen stage (default: 1)")
     p.add_argument("--main-largen-encoders", nargs="+",
-                   default=["linear", "mlp", "sum-ortho",
+                   default=["linear", "mlp", "linear-ortho",
                             "linear-ppe", "concat"],
                    help="encoders for the main_largen stage")
     p.add_argument("--main-largen-C", type=int, default=16,
@@ -1161,7 +1245,7 @@ def main() -> None:
                    help="seed count for the pospro_geometry stage "
                         "(default: 5)")
     p.add_argument("--main-mse-encoders", nargs="+",
-                   default=["sum", "linear", "sum-ortho", "concat",
+                   default=["sum", "linear", "linear-ortho", "concat",
                             "mlp", "linear-ppe"],
                    help="encoders for the main_mse stage")
     p.add_argument("--main-mse-Cs", type=int, nargs="+", default=[4, 16],
@@ -1169,6 +1253,10 @@ def main() -> None:
                         "(default: 4 16)")
     p.add_argument("--main-mse-seeds", type=int, default=5,
                    help="seed count for the main_mse stage (default: 5)")
+    p.add_argument("--mlp-geom-Cs", type=int, nargs="+", default=[4, 8, 16],
+                   help="channel counts for the mlp_geometry stage")
+    p.add_argument("--mlp-geom-seeds", type=int, default=5,
+                   help="seed count for the mlp_geometry stage (default: 5)")
     p.add_argument("--extra-seeds-start", type=int, default=5,
                    help="first seed for the extra_seeds round-robin "
                         "stage (default: 5, so seeds 0..4 already "
@@ -1246,6 +1334,12 @@ def main() -> None:
         with open(os.path.join(args.out, "main_mse.json"), "w") as f:
             json.dump(mm, f, indent=2)
 
+    if "mlp_geometry" in args.stages:
+        mg = stage_mlp_geometry(args, device)
+        results["mlp_geometry"] = mg
+        with open(os.path.join(args.out, "mlp_geometry.json"), "w") as f:
+            json.dump(mg, f, indent=2)
+
     if "pospro_geometry" in args.stages:
         pg = stage_pospro_geometry(args, device)
         results["pospro_geometry"] = pg
@@ -1284,6 +1378,7 @@ def main() -> None:
         "main_largen": "main_largen.json",
         "pospro_geometry": "pospro_geometry.json",
         "main_mse": "main_mse.json",
+        "mlp_geometry": "mlp_geometry.json",
     }
     for key, fname in _STAGE_FILES.items():
         if key in results:

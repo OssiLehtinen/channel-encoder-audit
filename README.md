@@ -29,7 +29,7 @@ is not pinned down here.
 | `cat`            | $2.360 \pm 0.073$     | $0.210 \pm 0.014$     |
 | `concat`         | $2.183 \pm 0.030$     | $0.240 \pm 0.005$     |
 | `mlp`            | $2.171 \pm 0.029$     | $0.244 \pm 0.008$     |
-| `sum-ortho`      | $2.170 \pm 0.016$     | $0.245 \pm 0.006$     |
+| `linear-ortho`      | $2.170 \pm 0.016$     | $0.245 \pm 0.006$     |
 | `linear`         | $2.170 \pm 0.016$     | $0.243 \pm 0.005$     |
 | **`linear-ppe`** | **$2.116 \pm 0.034$** | **$0.257 \pm 0.009$** |
 
@@ -42,7 +42,7 @@ Random baseline: NLL $= \ln 32 \approx 3.466$, acc $= 1/32 \approx 0.031$.
 | `sum`        | $3.633 \pm 0.049$     | $0.018 \pm 0.024$ |
 | `ci`         | $0.853 \pm 0.022$     | $0.674 \pm 0.013$ |
 | `mlp`        | $0.577 \pm 0.010$     | $0.790 \pm 0.007$ |
-| `sum-ortho`  | $0.572 \pm 0.022$     | $0.787 \pm 0.008$ |
+| `linear-ortho`  | $0.572 \pm 0.022$     | $0.787 \pm 0.008$ |
 | `linear-ppe` | $0.570 \pm 0.015$     | $0.773 \pm 0.005$ |
 | `linear`     | $0.566 \pm 0.019$     | $0.789 \pm 0.008$ |
 | `concat`     | $0.560 \pm 0.010$     | $0.777 \pm 0.018$ |
@@ -70,7 +70,7 @@ positional encoding:
 |--------------|-----------|
 | `sum`        | shared scalar projection $W$, per-channel bias: $h(t) = \sum_k (W v_k(t) + e_k) + \mathbf{p}(t)$ |
 | `linear`     | per-channel projection $W_k$, summed: $h(t) = \sum_k (W_k v_k(t) + b_k) + \mathbf{p}(t)$ — i.e. `nn.Linear(C, d_model)` |
-| `sum-ortho`  | `linear` plus auxiliary loss $\lambda \sum_{i \ne j}(W_i \cdot W_j)^2$ ($\lambda=10^{-2}$) |
+| `linear-ortho`  | `linear` plus auxiliary loss $\lambda \sum_{i \ne j}(W_i \cdot W_j)^2$ ($\lambda=10^{-2}$) |
 | `mlp`        | two-layer MLP on the channel vector with GELU nonlinearity |
 | `linear-ppe` | `linear` channel side plus a learned linear projection of $\mathbf{p}(t)$ |
 | `concat`     | per-channel projection into $d_{\text{model}}/C$ dims, concatenated (block partitioning) |

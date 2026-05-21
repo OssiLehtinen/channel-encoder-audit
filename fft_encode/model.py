@@ -95,7 +95,7 @@ def build_model(kind: str, n_channels: int, d_model: int, n_bins: int, **kw):
     """Return a model whose forward(x: (B,T,C)) -> logits (B,T,K).
 
     Encoder-only variants share SignalTransformer:
-      sum, linear, sum-ortho, mlp, linear-ppe, linear-lpe, concat.
+      sum, linear, linear-ortho, mlp, linear-ppe, linear-lpe, concat.
     Architectural baselines return their own module:
       ci (channel-independent, PatchTST-spirit)
       cat (channel-as-token, iTransformer/Crossformer-spirit).
@@ -111,7 +111,9 @@ def build_model(kind: str, n_channels: int, d_model: int, n_bins: int, **kw):
         elif kind == "mlp":
             enc = MLPEncoding(n_channels=n_channels, d_model=d_model)
         return SignalTransformer(enc, d_model=d_model, n_bins=n_bins, **kw)
-    if kind == "sum-ortho":
+    if kind in ("linear-ortho", "sum-ortho"):
+        # ``sum-ortho`` is the pre-rename alias kept for backward compat
+        # with results_paper/*.json files written before the rename.
         ortho_lambda = kw.pop("ortho_lambda", 1e-2)
         enc = SumOrthoEncoding(n_channels=n_channels, d_model=d_model,
                                ortho_lambda=ortho_lambda)

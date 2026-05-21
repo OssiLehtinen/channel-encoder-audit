@@ -8,10 +8,10 @@ MAIN SWEEP (synthetic, 5 seeds, best val NLL)
               ci  3.0541±0.0070  0.139±0.003
           concat  2.1833±0.0303  0.240±0.005
           linear  2.1702±0.0163  0.243±0.005
+    linear-ortho  2.1704±0.0164  0.245±0.006
       linear-ppe  2.1161±0.0337  0.257±0.009
              mlp  2.1706±0.0293  0.244±0.008
              sum  3.2520±0.0093  0.092±0.003
-       sum-ortho  2.1704±0.0164  0.245±0.006
 
   C = 8:
          encoder                nll                acc
@@ -19,20 +19,20 @@ MAIN SWEEP (synthetic, 5 seeds, best val NLL)
               ci  3.0559±0.0132  0.136±0.004
           concat  2.2220±0.0121  0.232±0.005
           linear  2.1694±0.0139  0.244±0.003
+    linear-ortho  2.1670±0.0131  0.246±0.003
       linear-ppe  2.1326±0.0185  0.251±0.005
              mlp  2.2132±0.0131  0.234±0.005
              sum  3.3012±0.0054  0.081±0.002
-       sum-ortho  2.1670±0.0131  0.246±0.003
 
   C = 16:
          encoder                nll                acc
               ci  3.0775±0.0240  0.132±0.007
           concat  2.3369±0.0341  0.211±0.006
           linear  2.2892±0.0255  0.221±0.006
+    linear-ortho  2.2972±0.0340  0.222±0.008
       linear-ppe  2.2813±0.0330  0.224±0.006
              mlp  2.2209±0.0210  0.234±0.004
              sum  3.3085±0.0036  0.075±0.003
-       sum-ortho  2.2972±0.0340  0.222±0.008
 
 ======================================================================
 D_MODEL SWEEP (C=4)
@@ -44,6 +44,9 @@ D_MODEL SWEEP (C=4)
       linear       64  2.1693±0.0144
       linear      128  2.2258±0.0228
       linear      256  2.3539±0.0231
+  linear-ortho       64  2.1698±0.0142
+  linear-ortho      128  2.2271±0.0228
+  linear-ortho      256  2.3524±0.0270
   linear-ppe       64  2.1195±0.0329
   linear-ppe      128  2.2146±0.0356
   linear-ppe      256  2.2785±0.0306
@@ -53,9 +56,6 @@ D_MODEL SWEEP (C=4)
          sum       64  3.2520±0.0095
          sum      128  3.2535±0.0083
          sum      256  3.2581±0.0062
-   sum-ortho       64  2.1698±0.0142
-   sum-ortho      128  2.2271±0.0228
-   sum-ortho      256  2.3524±0.0270
 
 ======================================================================
 GEOMETRY (W_k norms, off-diagonal cosines, variance)
@@ -77,7 +77,7 @@ GEOMETRY (W_k norms, off-diagonal cosines, variance)
     driver/distractor norm ratio = 2.128
     driver var fraction = 0.605
 
-  sum-ortho, C=4: mean|cos|=0.0100, max|cos|=0.0217
+  linear-ortho, C=4: mean|cos|=0.0100, max|cos|=0.0217
 
 ======================================================================
 LINEAR PROBE (R² recovering raw channels from hidden)
@@ -87,8 +87,8 @@ LINEAR PROBE (R² recovering raw channels from hidden)
          sum      3  [0.248, 0.242, 0.235, 0.206]  (0.233)
       linear      0  [1.000, 1.000, 1.000, 1.000]  (1.000)
       linear      3  [0.957, 0.861, 0.911, 0.879]  (0.902)
-   sum-ortho      0  [1.000, 1.000, 1.000, 1.000]  (1.000)
-   sum-ortho      3  [0.959, 0.856, 0.915, 0.885]  (0.904)
+  linear-ortho      0  [1.000, 1.000, 1.000, 1.000]  (1.000)
+  linear-ortho      3  [0.959, 0.856, 0.915, 0.885]  (0.904)
          mlp      0  [1.000, 1.000, 1.000, 1.000]  (1.000)
          mlp      3  [0.934, 0.879, 0.913, 0.646]  (0.843)
   linear-ppe      0  [1.000, 1.000, 1.000, 1.000]  (1.000)
@@ -102,7 +102,7 @@ CHANNEL MASK (val acc when each channel zeroed at test)
      encoder   base_acc  per-channel mask acc
          sum      0.093  [0.082, 0.089, 0.084, 0.094]
       linear      0.238  [0.096, 0.116, 0.106, 0.204]
-   sum-ortho      0.239  [0.096, 0.117, 0.104, 0.205]
+  linear-ortho      0.239  [0.096, 0.117, 0.104, 0.205]
          mlp      0.240  [0.098, 0.111, 0.106, 0.209]
   linear-ppe      0.256  [0.096, 0.115, 0.106, 0.216]
       concat      0.241  [0.096, 0.113, 0.103, 0.202]
@@ -117,10 +117,10 @@ ETTh1 (real data, 7 variates, d_model=56)
           ci  0.8533±0.0218  0.674±0.013
       concat  0.5602±0.0102  0.777±0.018
       linear  0.5664±0.0186  0.789±0.008
+  linear-ortho  0.5716±0.0218  0.787±0.008
   linear-ppe  0.5697±0.0150  0.773±0.005
          mlp  0.5770±0.0099  0.790±0.007
          sum  3.6331±0.0490  0.018±0.024
-   sum-ortho  0.5716±0.0218  0.787±0.008
 
 ======================================================================
 POSITIONAL PROJECTION GEOMETRY (linear vs linear-ppe at C=4)
@@ -129,29 +129,37 @@ POSITIONAL PROJECTION GEOMETRY (linear vs linear-ppe at C=4)
   linear-ppe: eff_rank(P) = 9.37±0.36, rank_99 = 19.2, min∠(W,P) = 0.0°±0.0°, mean∠ = 0.0°, P-energy-in-span(W) = 0.007±0.001
 
 ======================================================================
+MAIN SWEEP, MSE TARGET (loss-family sensitivity check)
+======================================================================
+        concat  C= 4  mse=0.0636±0.0027  R²=0.882±0.006  (n=5)
+        linear  C= 4  mse=0.0619±0.0024  R²=0.886±0.005  (n=5)
+  linear-ortho  C= 4  mse=0.0619±0.0024  R²=0.886±0.005  (n=5)
+    linear-ppe  C= 4  mse=0.0582±0.0031  R²=0.892±0.007  (n=5)
+           mlp  C= 4  mse=0.0643±0.0044  R²=0.881±0.009  (n=5)
+           sum  C= 4  mse=0.4719±0.0090  R²=0.128±0.016  (n=5)
+        concat  C=16  mse=0.0862±0.0071  R²=0.840±0.014  (n=5)
+        linear  C=16  mse=0.0736±0.0026  R²=0.863±0.008  (n=5)
+  linear-ortho  C=16  mse=0.0735±0.0020  R²=0.864±0.007  (n=5)
+    linear-ppe  C=16  mse=0.0722±0.0033  R²=0.866±0.007  (n=5)
+           mlp  C=16  mse=0.0678±0.0025  R²=0.874±0.007  (n=5)
+           sum  C=16  mse=0.5338±0.0167  R²=0.011±0.006  (n=5)
+
+======================================================================
 MAIN SWEEP AT LARGE N (top-tier encoders, data-rich regime)
 ======================================================================
         concat  C=16  N=5120  nll=1.8590±0.0104  acc=0.339±0.003  (n=5)
         linear  C=16  N=5120  nll=1.8480±0.0130  acc=0.340±0.005  (n=5)
+  linear-ortho  C=16  N=5120  nll=1.8488±0.0133  acc=0.340±0.005  (n=5)
     linear-ppe  C=16  N=5120  nll=1.8470±0.0121  acc=0.342±0.004  (n=5)
            mlp  C=16  N=5120  nll=1.8344±0.0076  acc=0.345±0.002  (n=5)
-     sum-ortho  C=16  N=5120  nll=1.8488±0.0133  acc=0.340±0.005  (n=5)
 
 ======================================================================
-GEOMETRY AT LARGE N (linear at C=8, distractor noise-floor probe)
+MLP FIRST-LAYER COLUMN GEOMETRY (W_1 cols of mlp)
 ======================================================================
-
-  seed=0, n_series=5120: nll=1.8496, mean|cos|=0.1941
-    norms = [1.992, 1.386, 1.242, 1.202, 0.129, 0.163, 0.342, 0.236]
-    var%  = [0.436, 0.211, 0.170, 0.159, 0.002, 0.003, 0.013, 0.006]
-    driver/distractor norm ratio = 6.689  (driver=1.456, distractor=0.218)
-
-======================================================================
-BIAS ABLATION (linear vs. linear-nobias, C=4, 5 seeds)
-======================================================================
-         encoder                nll    mean|cos|    max|cos|
-          linear  2.1693±0.0144  0.0360  0.0821
-   linear-nobias  2.1768±0.0126  0.0363  0.0831
+    C                nll          mean|cos|           max|cos|  n
+    4  2.1699±0.0361  0.0747±0.0212  0.1576±0.0579  5
+    8  2.2135±0.0157  0.0737±0.0152  0.2475±0.0977  5
+   16  2.2215±0.0254  0.1053±0.0054  0.4632±0.1088  5
 
 ======================================================================
 CONVERGENCE (epochs to within +0.05 NLL of own best)
@@ -177,6 +185,6 @@ CONVERGENCE (epochs to within +0.05 NLL of own best)
          sum    4           20      23.2
          sum    8           20      23.9
          sum   16           20      24.1
-   sum-ortho    4          156      24.3
-   sum-ortho    8          152      24.7
-   sum-ortho   16          132      24.8
+  linear-ortho    4          156      24.3
+  linear-ortho    8          152      24.7
+  linear-ortho   16          132      24.8

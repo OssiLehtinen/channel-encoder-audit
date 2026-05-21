@@ -55,7 +55,7 @@ pulls ahead of the linear family at $C{=}16$ (paired $p \in
 ${\sim}3\times$ at $10\times$ training data but staying clear. On
 ETTh1 \textsc{cat} posts the lowest mean NLL, decisively above
 \textsc{mlp} and \textsc{linear-ppe} but statistically tied with
-\textsc{linear} and \textsc{sum-ortho}. The picture is one of
+\textsc{linear} and \textsc{linear-ortho}. The picture is one of
 practical near-equivalence within the top tier: statistically real
 gaps that are small in magnitude and would not, on this evidence, be
 expected to translate cleanly to new tasks. The practical
@@ -124,7 +124,7 @@ orthogonalisation) directly measured; \textsc{mlp} pulls ahead at
 $C{=}16$ (paired $p \in [2{\times}10^{-4},
 5{\times}10^{-12}]$, gap shrinks $3\times$ at $10\times$ data); and
 \textsc{cat} posts the lowest mean NLL on ETTh1 but is statistically
-tied with \textsc{linear} and \textsc{sum-ortho}.
+tied with \textsc{linear} and \textsc{linear-ortho}.
 
 % ======================================================================
 \section{Method}
@@ -209,7 +209,7 @@ share the same input/output signature
 $\mathbb{R}^{B\times T\times C} \to \mathbb{R}^{B\times T\times
 d_{\text{model}}}$ and are therefore drop-in interchangeable. The
 variants are: \textsc{sum} (shared $W$ then sum across channels),
-\textsc{linear} (per-channel $W_k$ then sum), \textsc{sum-ortho}
+\textsc{linear} (per-channel $W_k$ then sum), \textsc{linear-ortho}
 (\textsc{linear} plus an orthogonality penalty on the $W_k$),
 \textsc{mlp} (two-layer MLP on the channel vector), \textsc{linear-ppe}
 (\textsc{linear} with a learned linear projection of the positional
@@ -246,7 +246,7 @@ Equivalently $\mathbf{h}(t) = W\,\mathbf{v}(t) + \mathbf{b} +
 \mathbf{p}(t)$ with $W \in \mathbb{R}^{d_{\text{model}}\times C}$:
 a single \texttt{nn.Linear(C, $d_{\text{model}}$)}.
 
-\paragraph{\textsc{sum-ortho}.} Same as \textsc{linear} with an
+\paragraph{\textsc{linear-ortho}.} Same as \textsc{linear} with an
 auxiliary loss $L_{\text{ortho}} = \lambda \sum_{i \ne j}
 (W_i \cdot W_j)^2 / 2$ ($\lambda{=}10^{-2}$). This variant isolates the
 regulariser's contribution.
@@ -305,7 +305,7 @@ where $y^{(b)}_t$ is the bin index at position $t$ in series $b$. The
 predicted distribution at position $t$ is supervised only by the bin
 at position $t+1$, and causal masking inside the transformer prevents
 the model from seeing $y_{t+1}$ at prediction time. The
-\textsc{sum-ortho} encoder adds the auxiliary loss
+\textsc{linear-ortho} encoder adds the auxiliary loss
 $\lambda \sum_{i \ne j}(W_i \cdot W_j)^2 / 2$ with $\lambda{=}10^{-2}$;
 all other encoders have $\mathcal{L} = \mathcal{L}_{\text{NLL}}$.
 
@@ -404,12 +404,12 @@ per-channel-$W_k$ encoders actually learn. Each is computed after
 full 300-epoch training, on five seeds unless stated otherwise.
 
 \paragraph{Gram-matrix analysis.}
-\textsc{linear} and \textsc{sum-ortho} differ only in whether the
+\textsc{linear} and \textsc{linear-ortho} differ only in whether the
 soft-orthogonality penalty
 $L_{\text{ortho}} = \lambda \sum_{i \ne j}(W_i \cdot W_j)^2/2$ is added
 to the loss. If both reach the same NLL, the question is whether
 \textsc{linear}'s $W_k$ are geometrically similar to
-\textsc{sum-ortho}'s---i.e.\ whether the task pressure alone already
+\textsc{linear-ortho}'s---i.e.\ whether the task pressure alone already
 produces a near-orthogonal arrangement---or whether the two encoders
 arrive at the same loss through different geometries.
 
@@ -498,9 +498,9 @@ respectively), so a single $H \to X$ probe does not apply.
 Table~\ref{tab:main} reports all eight encoders at $C{=}4$,
 $d_{\text{model}}{=}64$, 300 epochs with cosine LR decay, 20 seeds.
 The headline read is \emph{practical near-equivalence among the
-per-channel-$W_k$ family}: \textsc{linear}, \textsc{sum-ortho},
+per-channel-$W_k$ family}: \textsc{linear}, \textsc{linear-ortho},
 \textsc{concat}, and \textsc{mlp} all fall in a $0.02$ NLL band at
-$2.155$--$2.177$, with \textsc{linear} and \textsc{sum-ortho} matching
+$2.155$--$2.177$, with \textsc{linear} and \textsc{linear-ortho} matching
 to three decimals (the orthogonality penalty contributes nothing at
 convergence). \textsc{linear-ppe} sits a touch below at $2.114$, a
 ${\sim}0.04$ NLL improvement over \textsc{linear} that is small in
@@ -545,7 +545,7 @@ gap above zero by a small margin.
 
 At $C{=}16$, \textsc{mlp} pulls ahead of the linear family
 ($2.231$ vs.\ $2.27$--$2.34$). Paired tests against \textsc{linear}
-($p{=}2{\times}10^{-4}$, 18/20), \textsc{sum-ortho}
+($p{=}2{\times}10^{-4}$, 18/20), \textsc{linear-ortho}
 ($p{=}7{\times}10^{-4}$, 17/20), and \textsc{concat}
 ($p{=}5{\times}10^{-12}$, 20/20) are decisive; against
 \textsc{linear-ppe} the gap is small and the call is borderline
@@ -581,7 +581,7 @@ encoder & $N{=}512$ val NLL & $N{=}5120$ val NLL & $\Delta$ from data \\
 \textsc{mlp}        & $2.231 \pm 0.032$ & $1.831 \pm 0.009$ & $-0.400$ \\
 \textsc{linear-ppe} & $2.252 \pm 0.038$ & $1.841 \pm 0.013$ & $-0.411$ \\
 \textsc{linear}     & $2.267 \pm 0.032$ & $1.843 \pm 0.015$ & $-0.424$ \\
-\textsc{sum-ortho}  & $2.267 \pm 0.038$ & $1.844 \pm 0.018$ & $-0.423$ \\
+\textsc{linear-ortho}  & $2.267 \pm 0.038$ & $1.844 \pm 0.018$ & $-0.423$ \\
 \textsc{concat}     & $2.340 \pm 0.033$ & $1.854 \pm 0.011$ & $-0.486$ \\
 \bottomrule
 \end{tabular}
@@ -590,7 +590,7 @@ encoder & $N{=}512$ val NLL & $N{=}5120$ val NLL & $\Delta$ from data \\
 Two things happen at once. (i)~\textsc{mlp}'s lead survives in the
 data-rich regime: $18$--$20$ of $20$ paired-seed differences favour
 \textsc{mlp} over each of \textsc{linear} (paired $p{=}4{\times}10^{-4}$),
-\textsc{sum-ortho} ($p{=}9.6{\times}10^{-4}$), \textsc{linear-ppe}
+\textsc{linear-ortho} ($p{=}9.6{\times}10^{-4}$), \textsc{linear-ppe}
 ($p{=}2.4{\times}10^{-4}$), and \textsc{concat}
 ($p{=}2.3{\times}10^{-13}$). The C=16 \textsc{mlp} finding is not a
 data-limited artefact. (ii)~The magnitude shrinks roughly three-fold:
@@ -661,7 +661,7 @@ gives it more directions to rotate into.
 \label{sec:results-gram}
 
 \textsc{linear} has no mechanism pushing the $W_k$ toward orthogonality;
-\textsc{sum-ortho} adds an explicit penalty. Both produce the same NLL
+\textsc{linear-ortho} adds an explicit penalty. Both produce the same NLL
 to three decimals. Applying the off-diagonal cosine diagnostic from
 Section~\ref{sec:method-diagnostics} gives:
 
@@ -675,7 +675,7 @@ mean over 20 seeds).}
 encoder      & best val NLL & $\max_{i\ne j}|\cos(W_i,W_j)|$ & mean $|\cos|$ \\
 \midrule
 \textsc{linear}    & $2.155$ & $0.095$ & $0.042$ \\
-\textsc{sum-ortho} & $2.155$ & $0.022$ & $0.010$ \\
+\textsc{linear-ortho} & $2.155$ & $0.022$ & $0.010$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -686,6 +686,46 @@ regulariser tightens this by another factor of ${\sim}4$ to $0.010$
 ($95\%$ CI $[0.008, 0.011]$) but does not improve downstream NLL.
 The task loss itself provides enough gradient pressure to separate the
 per-channel projections once they exist as free parameters.
+
+\paragraph{Does the MLP stem do the same thing?}
+The same diagnostic applies to \textsc{mlp}'s first-layer weight
+$W^{(1)} \in \mathbb{R}^{d_{\text{hidden}} \times C}$: its columns are
+the per-channel input directions before the GELU nonlinearity, and
+their pairwise cosines measure how much the encoder separates
+channels at the linear-stem stage versus deferring that separation
+to GELU plus $W^{(2)}$. Training \textsc{mlp} at $C \in \{4, 8, 16\}$
+with $5$ seeds and applying the off-diagonal cosine diagnostic to
+$W^{(1)}$'s columns:
+
+\begin{table}[h]
+\centering
+\caption{\textsc{mlp} first-layer column geometry ($300$ epochs,
+$d_{\text{model}}{=}64$, $5$ seeds). Compare to \textsc{linear}'s
+$W_k$ at $C{=}4$: mean $0.042$, max $0.095$.}
+\label{tab:mlp-gram}
+\begin{tabular}{lccc}
+\toprule
+$C$  & best val NLL & mean $|\cos|$ & max $|\cos|$ \\
+\midrule
+$4$  & $2.170 \pm 0.036$ & $0.075 \pm 0.021$ & $0.158 \pm 0.058$ \\
+$8$  & $2.214 \pm 0.016$ & $0.074 \pm 0.015$ & $0.248 \pm 0.098$ \\
+$16$ & $2.222 \pm 0.025$ & $0.105 \pm 0.005$ & $0.463 \pm 0.109$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textsc{mlp}'s linear stem is also pushed toward near-orthogonality
+by the task loss, but consistently looser than the
+linear family's $W_k$: at $C{=}4$ its mean off-diagonal cosine is
+$1.8\times$ \textsc{linear}'s ($0.075$ vs.\ $0.042$); at $C{=}16$
+the gap widens further and pairs of columns reach $|\cos| \approx
+0.46$. The mechanism is straightforward: \textsc{mlp} can also
+separate channels through the GELU plus $W^{(2)}$, so the gradient
+pressure on $W^{(1)}$ alone is partially relieved. The qualitative
+finding survives---spontaneous channel orthogonalisation is a
+property of the task loss interacting with a per-channel input
+stem, not unique to a single-layer projection---but quantitatively
+the linear family achieves the cleanest geometry.
 
 \subsection{Bias ablation: the biases play no role in the geometry}
 \label{sec:results-bias}
@@ -859,7 +899,7 @@ resolution of 20 epochs. Cost is per-epoch wall time normalised to
 encoder & best NLL & epoch to NLL $+0.05$ & relative cost \\
 \midrule
 \textsc{linear}     & $2.170$ & $\sim$152 & $1.00\times$ \\
-\textsc{sum-ortho}  & $2.170$ & $\sim$156 & $1.04\times$ \\
+\textsc{linear-ortho}  & $2.170$ & $\sim$156 & $1.04\times$ \\
 \textsc{mlp}        & $2.171$ & $\sim$144 & $1.01\times$ \\
 \textsc{concat}     & $2.183$ & $\sim$152 & $1.00\times$ \\
 \textsc{linear-ppe} & $2.116$ & $\sim$148 & $0.99\times$ \\
@@ -1009,7 +1049,7 @@ overfitting at the larger widths.
 
 Table~\ref{tab:etth1} mostly confirms the synthetic ordering on
 ETTh1: the per-channel-$W_k$ family (\textsc{linear},
-\textsc{sum-ortho}, \textsc{concat}, \textsc{linear-ppe},
+\textsc{linear-ortho}, \textsc{concat}, \textsc{linear-ppe},
 \textsc{mlp}) cluster within seed std of each other,
 \textsc{ci} underperforms, and \textsc{sum} fails catastrophically
 (NLL near $\ln 32 \approx 3.47$).
@@ -1027,14 +1067,14 @@ picture:
   ($p{=}0.002$, 16/20).
 \item Indistinguishable: \textsc{cat} vs.\ \textsc{linear}
   ($\Delta = 0.010$, paired $p{=}0.14$, 13/20) and
-  \textsc{cat} vs.\ \textsc{sum-ortho}
+  \textsc{cat} vs.\ \textsc{linear-ortho}
   ($\Delta = 0.010$, paired $p{=}0.10$, 13/20).
 \end{itemize}
 
 Best-bin accuracies across the top tier are indistinguishable
 ($0.78$--$0.79$ with seed std ${\sim}0.01$). So \textsc{cat} posts
 the lowest mean NLL but is statistically tied with \textsc{linear}
-and \textsc{sum-ortho} at the seed-level we test. Read carefully,
+and \textsc{linear-ortho} at the seed-level we test. Read carefully,
 the finding is not that channel-as-token decisively wins on real
 data, but that its synthetic-benchmark disadvantage closes and a
 small directional lead emerges---one that does not survive a paired
@@ -1144,7 +1184,7 @@ $N{=}512$ regime already produces at $d{\ge}128$ (Section
 At $C{=}16$ the picture flips: paired tests
 (Section~\ref{sec:results-scaling}) show \textsc{mlp} ahead of
 \textsc{linear} ($\Delta = 0.036$, $p{=}2{\times}10^{-4}$, 18/20),
-\textsc{sum-ortho} ($\Delta = 0.036$, $p{=}7{\times}10^{-4}$), and
+\textsc{linear-ortho} ($\Delta = 0.036$, $p{=}7{\times}10^{-4}$), and
 \textsc{concat} ($\Delta = 0.108$, $p{=}5{\times}10^{-12}$); against
 \textsc{linear-ppe} the gap is small and borderline
 ($\Delta = 0.020$, paired $p{=}0.053$, 12/20). A plausible reading:
@@ -1221,7 +1261,7 @@ posts the lowest mean NLL. Paired-difference tests at $20$ seeds
 \textsc{mlp} ($p{=}1.4{\times}10^{-7}$) and \textsc{linear-ppe}
 ($p{=}3{\times}10^{-4}$), marginally above \textsc{concat}
 ($p{=}0.002$), and \emph{statistically tied} with \textsc{linear}
-($p{=}0.14$) and \textsc{sum-ortho} ($p{=}0.10$). Best-bin accuracies
+($p{=}0.14$) and \textsc{linear-ortho} ($p{=}0.10$). Best-bin accuracies
 in the top tier are indistinguishable. So \textsc{cat}'s
 synthetic-benchmark disadvantage closes on ETTh1 but its claimed
 lead doesn't survive a paired test against the closest competitors;
@@ -1229,7 +1269,7 @@ the practical reading is that \textsc{cat} is competitive on ETTh1,
 not clearly best.
 
 \paragraph{No convergence-time penalty for involved encoders.}
-\textsc{mlp}, \textsc{sum-ortho}, and \textsc{linear-ppe} reach within
+\textsc{mlp}, \textsc{linear-ortho}, and \textsc{linear-ppe} reach within
 $0.05$ NLL of their final value at the same trace point as
 \textsc{linear} ($\sim$150 epochs) and cost the same per-epoch wall
 time. Within the family that uses per-channel $W_k$ on a shared
@@ -1247,13 +1287,35 @@ token semantics for the same coordinates. We do not test any of this;
 the variance-contribution diagnostic in particular does not translate
 cleanly to discrete inputs and would need a probe-based analog.
 
+\input{tables/mse.tex}
+
+\paragraph{Loss-family check: regression target.}
+The categorical $K{=}32$-bin head could in principle interact with
+encoder choice---e.g.\ by rewarding encoders that resolve fine target
+quantiles---so we rerun the synthetic main sweep with a scalar MSE
+head on the continuous (pre-binning) target. Same backbone, same
+training schedule, $5$ seeds, $C \in \{4, 16\}$
+(Table~\ref{tab:mse}). The ordering is preserved at both channel
+counts: \textsc{sum} collapses to $R^2 \approx 0.13$ at $C{=}4$ and
+$\approx 0.01$ at $C{=}16$, consistent with the information-theoretic
+ceiling argument; the per-channel-$W_k$ tier clusters tight;
+\textsc{linear-ppe} edges \textsc{linear} at $C{=}4$
+($\sim$$6\%$ MSE reduction), and \textsc{mlp} edges \textsc{linear} at
+$C{=}16$. The categorical-vs.-MSE choice is therefore not what is
+driving the encoder ordering---both losses penalise \textsc{sum} for
+the same information-theoretic reason, and both reveal the same small
+gaps inside the top tier. The MSE sweep is not powered (5 seeds, no
+paired design) to resolve the within-tier gaps at the statistical
+level of the categorical 20-seed analysis; what it does is rule out
+that the entire ordering is a label-binning artefact.
+
 \paragraph{Practical near-equivalence within the top tier.}
 The paired tests reported above are powered by $20$-seed
 paired-difference designs and resolve several small gaps that the
 unpaired analysis at $5$ seeds called borderline. It is worth
 separating that statistical power from a practical claim. The
 absolute differences in NLL among the per-channel-$W_k$ family
-(\textsc{linear}, \textsc{sum-ortho}, \textsc{concat}, \textsc{mlp},
+(\textsc{linear}, \textsc{linear-ortho}, \textsc{concat}, \textsc{mlp},
 \textsc{linear-ppe}) at $C{=}4$ span $0.02$ NLL on a baseline of
 $2.16$; \textsc{linear-ppe}'s lead over \textsc{linear} is $0.041$
 NLL, about $2\%$ of the baseline; \textsc{mlp}'s lead over the
@@ -1356,7 +1418,7 @@ caveats:
   observable wall-clock cost.
 \item \textsc{mlp} pulls ahead of the linear family at $C{=}16$
   under paired analysis (paired $p \in [3{\times}10^{-4},
-  5{\times}10^{-12}]$ vs.\ \textsc{linear}, \textsc{sum-ortho},
+  5{\times}10^{-12}]$ vs.\ \textsc{linear}, \textsc{linear-ortho},
   \textsc{concat}; gap shrinks ${\sim}3\times$ at $10\times$
   training data but stays statistically clear). It is worse than
   \textsc{linear} at $C{=}4$, and worse than the linear family at
@@ -1364,7 +1426,7 @@ caveats:
 \item \textsc{cat} posts the lowest mean NLL on ETTh1, separating
   cleanly from \textsc{mlp} and \textsc{linear-ppe} under paired
   tests but \emph{statistically tied} with \textsc{linear} and
-  \textsc{sum-ortho} ($p > 0.1$). It costs ${\sim}5{\times}$ wall
+  \textsc{linear-ortho} ($p > 0.1$). It costs ${\sim}5{\times}$ wall
   clock at $C{=}4$ and substantially more at higher $C$.
 \end{itemize}
 

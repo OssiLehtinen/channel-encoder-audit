@@ -15,7 +15,7 @@ import numpy as np
 STYLE = {
     "sum":        dict(color="#d1495b", marker="s", label="sum"),
     "linear":     dict(color="#2196f3", marker="D", label="linear"),
-    "sum-ortho":  dict(color="#b5179e", marker="P", label="sum-ortho"),
+    "linear-ortho": dict(color="#b5179e", marker="P", label="linear-ortho"),
     "mlp":        dict(color="#ff9800", marker="v", label="mlp"),
     "linear-ppe": dict(color="#1b9e77", marker="^", label="linear-ppe"),
     "concat":     dict(color="#edae49", marker="o", label="concat"),
@@ -23,16 +23,17 @@ STYLE = {
     "cat":        dict(color="#5f0f40", marker="*", label="cat"),
 }
 
-# Back-compat alias for results files produced before the sum-perch -> linear
-# rename. plot.py canonicalises by reading r["cfg"]["encoder"] through _canon.
-_ENCODER_ALIAS = {"sum-perch": "linear"}
+# Back-compat aliases for results files produced before the
+# sum-perch -> linear and sum-ortho -> linear-ortho renames.
+# plot.py canonicalises by reading r["cfg"]["encoder"] through _canon.
+_ENCODER_ALIAS = {"sum-perch": "linear", "sum-ortho": "linear-ortho"}
 
 
 def _canon(enc: str) -> str:
     return _ENCODER_ALIAS.get(enc, enc)
 
 
-ORDER = ["sum", "ci", "cat", "mlp", "concat", "linear", "sum-ortho",
+ORDER = ["sum", "ci", "cat", "mlp", "concat", "linear", "linear-ortho",
          "linear-ppe"]
 
 SKIP = {"fdm", "fdm-learn", "linear-lpe"}

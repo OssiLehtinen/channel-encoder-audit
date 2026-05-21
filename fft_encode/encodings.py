@@ -33,8 +33,11 @@ class SumEncoding(nn.Module):
 
 
 class SumOrthoEncoding(nn.Module):
-    """Summation with a soft orthogonality regulariser on per-channel
-    projections.
+    """Per-channel projections with a soft orthogonality regulariser
+    (paper name: ``linear-ortho``; ``sum-ortho`` is the legacy name kept
+    as a build_model alias for backward compat with older JSON outputs).
+    The class name is left at ``SumOrthoEncoding`` because pickled
+    checkpoints in old artefacts reference it.
 
     Each channel k has its own learned projection W_k in R^{d_model} (no
     sharing across channels). Embeddings are summed. The encoder exposes an
