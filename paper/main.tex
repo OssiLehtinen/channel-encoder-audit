@@ -10,6 +10,8 @@
 \usepackage{authblk}
 \usepackage{caption}
 \usepackage{multirow}
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta, fit, backgrounds, calc}
 \usepackage[round,sort&compress,numbers]{natbib}
 
 \hypersetup{colorlinks=true, linkcolor=blue!50!black,
@@ -118,7 +120,88 @@ All encoders share a common backbone: a small causal transformer with
 $d_{\text{model}}{=}64$, 4 attention heads, 3 layers, feed-forward
 width $d_{\text{ff}}{=}256$, dropout $0.1$, pre-LayerNorm, and a
 linear categorical head mapping to $K{=}32$ logits. The \emph{only}
-component that varies across experiments is the input encoder.
+component that varies across experiments is the input encoder
+(Figure~\ref{fig:arch}).
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  font=\small,
+  node distance=3.5mm and 10mm,
+  ioblock/.style ={rectangle, draw, rounded corners=2pt,
+                   fill=yellow!10, minimum width=5.2cm,
+                   minimum height=0.6cm, align=center},
+  encblock/.style={rectangle, draw, thick, rounded corners=2pt,
+                   fill=blue!12, minimum width=5.2cm,
+                   minimum height=1.0cm, align=center},
+  txblock/.style ={rectangle, draw, rounded corners=2pt,
+                   fill=gray!10, minimum width=5.2cm,
+                   minimum height=0.6cm, align=center},
+  insetblock/.style={rectangle, draw, rounded corners=1pt,
+                     fill=gray!5, minimum width=4.0cm,
+                     minimum height=0.45cm, align=center,
+                     font=\footnotesize},
+  arr/.style     ={-{Stealth[length=2.4mm]}, semithick},
+  dimlabel/.style={font=\footnotesize\itshape, anchor=west, inner sep=2pt}
+]
+  \node[ioblock]                  (input) {Input
+        $\mathbf{x} \in \mathbb{R}^{B \times T \times C}$};
+  \node[encblock, below=of input] (enc)   {\textbf{\textsc{Encoder}}\\
+        \emph{(the swap point: one of eight variants, see caption)}};
+  \node[txblock, below=of enc]    (b1)    {Transformer block 1};
+  \node[txblock, below=of b1]     (b2)    {Transformer block 2};
+  \node[txblock, below=of b2]     (b3)    {Transformer block 3};
+  \node[txblock, below=of b3]     (ln)    {Final LayerNorm};
+  \node[txblock, below=of ln]     (head)  {Linear head
+        $\mathbb{R}^{d_{\text{model}}} \to \mathbb{R}^{K}$};
+  \node[ioblock, below=of head]   (out)   {Logits
+        $\boldsymbol{\ell} \in \mathbb{R}^{B \times T \times K}$,
+        cross-entropy on next-step bin};
+
+  \foreach \src/\dst in {input/enc, enc/b1, b1/b2, b2/b3, b3/ln,
+                         ln/head, head/out} {
+    \draw[arr] (\src) -- (\dst);
+  }
+
+  \node[dimlabel] at ($(enc.south east)!0.5!(b1.north east)+(0.15,0)$)
+       {$\mathbf{h} \in \mathbb{R}^{B \times T \times d_{\text{model}}}$
+        \;(residual stream starts here)};
+
+  % Inset: zoom into the structure of one transformer block.
+  \node[insetblock, right=14mm of b2] (z1) {LayerNorm};
+  \node[insetblock, below=2mm of z1]  (z2) {Self-attention (causal)};
+  \node[insetblock, below=2mm of z2]  (z3) {$+$ \emph{residual}};
+  \node[insetblock, below=2mm of z3]  (z4) {LayerNorm};
+  \node[insetblock, below=2mm of z4]  (z5) {FFN (GELU)};
+  \node[insetblock, below=2mm of z5]  (z6) {$+$ \emph{residual}};
+  \foreach \src/\dst in {z1/z2, z2/z3, z3/z4, z4/z5, z5/z6} {
+    \draw[arr] (\src) -- (\dst);
+  }
+  \node[font=\footnotesize, above=1.5mm of z1, anchor=south]
+       {\emph{Inside one block (pre-LN)}};
+  \draw[dashed, gray] (b2.east) -- (z1.west);
+
+\end{tikzpicture}
+\caption{Architecture. Every experiment uses the same causal
+transformer backbone (three pre-LN blocks, each structured as in the
+inset on the right: LN $\to$ self-attention $\to$ residual,
+LN $\to$ FFN $\to$ residual; followed by a final LayerNorm and a
+linear head into $K{=}32$ bin logits). \textbf{The only component
+that varies across experiments is the encoder (blue).} Eight encoders
+share the same input/output signature
+$\mathbb{R}^{B\times T\times C} \to \mathbb{R}^{B\times T\times
+d_{\text{model}}}$ and are therefore drop-in interchangeable. The
+variants are: \textsc{sum} (shared $W$ then sum across channels),
+\textsc{linear} (per-channel $W_k$ then sum), \textsc{sum-ortho}
+(\textsc{linear} plus an orthogonality penalty on the $W_k$),
+\textsc{mlp} (two-layer MLP on the channel vector), \textsc{linear-ppe}
+(\textsc{linear} with a learned linear projection of the positional
+encoding), \textsc{concat} (per-channel block concatenated),
+\textsc{ci} (channel-independent backbone), and \textsc{cat}
+(channel-as-token attention). Precise definitions are in
+Section~\ref{sec:method}.}
+\label{fig:arch}
+\end{figure}
 
 \subsection{Encoders}
 
