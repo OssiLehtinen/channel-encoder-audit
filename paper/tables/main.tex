@@ -1,30 +1,27 @@
 \begin{table}[t]
 \centering
 \caption{Main comparison at $C{=}4$, $d_{\text{model}}{=}64$, 300 epochs,
-cosine LR decay, mean $\pm$ std over 5 seeds. Best val NLL (effective
-early stopping). Random baseline: NLL$\,{=}\ln 32 \approx 3.47$,
-acc$\,{=}0.031$.
-$^\dagger$\textsc{ci} and \textsc{cat} replace the shared transformer
-backbone with a per-channel or per-variate-token architecture, so
-their notion of ``encoder parameters'' is awkward; we report the
-per-channel input projection (and, for \textsc{cat}, the per-variate
-embedding), which is the analogue of the encoder used by the other
-rows. The bulk of their parameter cost lives in the replacement
-backbone (not shown here).}
+cosine LR decay, mean $\pm$ std over 20 seeds (5 canonical + 15
+paired-seed extras). Best val NLL (effective early stopping). Random
+baseline: NLL$\,{=}\ln 32 \approx 3.47$, acc$\,{=}0.031$.
+$^\dagger$For \textsc{ci} and \textsc{cat}, ``encoder params'' counts
+only the per-channel input projection (plus per-variate embedding for
+\textsc{cat}); the bulk of those architectures' parameters lives in
+the replacement backbone.}
 \label{tab:main}
 \begin{tabular}{lccc}
 \toprule
 Encoder & Enc.\ params & Val NLL $\downarrow$ & Val acc $\uparrow$ \\
 \midrule
-\textsc{sum}            & 320      & $3.252 \pm 0.009$ & $0.092 \pm 0.003$ \\
-\textsc{ci}$^\dagger$   & 128      & $3.054 \pm 0.007$ & $0.139 \pm 0.003$ \\
-\textsc{cat}$^\dagger$  & 384      & $2.360 \pm 0.073$ & $0.210 \pm 0.014$ \\
+\textsc{sum}        & 320     & $3.257 \pm 0.011$ & $0.091 \pm 0.003$ \\
+\textsc{ci}$^\dagger$ & 128   & $3.053 \pm 0.013$ & $0.136 \pm 0.004$ \\
+\textsc{cat}$^\dagger$ & 384  & $2.348 \pm 0.060$ & $0.212 \pm 0.011$ \\
 \midrule
-\textsc{concat}         & 128      & $2.183 \pm 0.030$ & $0.240 \pm 0.005$ \\
-\textsc{mlp}            & 4{,}480  & $2.171 \pm 0.029$ & $0.244 \pm 0.008$ \\
-\textsc{sum-ortho}      & 512      & $2.170 \pm 0.016$ & $0.245 \pm 0.006$ \\
-\textsc{linear}         & 512      & $2.170 \pm 0.016$ & $0.243 \pm 0.005$ \\
-\textsc{linear-ppe}     & 4{,}672  & $2.116 \pm 0.034$ & $0.257 \pm 0.009$ \\
+\textsc{concat}     & 128     & $2.170 \pm 0.025$ & $0.243 \pm 0.006$ \\
+\textsc{linear}     & 512     & $2.155 \pm 0.019$ & $0.247 \pm 0.006$ \\
+\textsc{sum-ortho}  & 512     & $2.155 \pm 0.020$ & $0.247 \pm 0.006$ \\
+\textsc{mlp}        & 4{,}480 & $2.177 \pm 0.022$ & $0.242 \pm 0.007$ \\
+\textsc{linear-ppe} & 4{,}672 & $2.114 \pm 0.029$ & $0.256 \pm 0.009$ \\
 \bottomrule
 \end{tabular}
 \end{table}

@@ -1,41 +1,41 @@
 \begin{table}[t]
 \centering
-\caption{Scaling with $d_{\text{model}}$ at $C{=}4$. $d_{\text{ff}}{=}4\,d_{\text{model}}$,
-$4$ attention heads (so $d_{\text{head}}$ grows). Mean $\pm$ std over
-$5$ seeds, $300$ epochs with cosine decay. \emph{All} encoders flag
-as overfitting at $d_{\text{model}} \ge 128$: best val NLL is reached
-well before epoch $300$ (typical best epochs $\sim$$100$ at
-$d{=}128$, $\sim$$40$ at $d{=}256$), and val NLL drifts upward
-afterwards. The reported best-NLL numbers are the effective-early-stopping
-minima.}
+\caption{Scaling with $d_{\text{model}}$ at $C{=}4$.
+$d_{\text{ff}}{=}4\,d_{\text{model}}$, $4$ attention heads (so
+$d_{\text{head}}$ grows). Mean $\pm$ std over $20$ seeds, $300$ epochs
+with cosine decay. \emph{All} encoders flag as overfitting at
+$d_{\text{model}} \ge 128$: best val NLL is reached well before epoch
+$300$ (typical best epochs $\sim$$100$ at $d{=}128$, $\sim$$40$ at
+$d{=}256$), and val NLL drifts upward afterwards. The reported
+best-NLL numbers are the effective-early-stopping minima.}
 \label{tab:dmodel}
 \begin{tabular}{llccc}
 \toprule
 $d_{\text{model}}$ & encoder & total params & val NLL $\downarrow$ & val acc $\uparrow$ \\
 \midrule
 \multirow{6}{*}{64}
-    & \textsc{sum}        & $152{,}480$    & $3.252 \pm 0.011$ & $0.091 \pm 0.003$ \\
-    & \textsc{concat}     & $152{,}288$    & $2.183 \pm 0.036$ & $0.243 \pm 0.005$ \\
-    & \textsc{linear}     & $152{,}672$    & $2.169 \pm 0.016$ & $0.248 \pm 0.005$ \\
-    & \textsc{sum-ortho}  & $152{,}672$    & $2.170 \pm 0.016$ & $0.246 \pm 0.005$ \\
-    & \textsc{mlp}        & $156{,}640$    & $2.170 \pm 0.036$ & $0.244 \pm 0.008$ \\
-    & \textsc{linear-ppe} & $156{,}832$    & $\mathbf{2.120 \pm 0.037}$ & $\mathbf{0.258 \pm 0.009}$ \\
+    & \textsc{sum}        & $152{,}480$    & $3.257 \pm 0.011$ & $0.091 \pm 0.003$ \\
+    & \textsc{concat}     & $152{,}288$    & $2.170 \pm 0.026$ & $0.243 \pm 0.006$ \\
+    & \textsc{linear}     & $152{,}672$    & $2.155 \pm 0.019$ & $0.248 \pm 0.005$ \\
+    & \textsc{sum-ortho}  & $152{,}672$    & $2.155 \pm 0.019$ & $0.248 \pm 0.005$ \\
+    & \textsc{mlp}        & $156{,}640$    & $2.177 \pm 0.023$ & $0.241 \pm 0.008$ \\
+    & \textsc{linear-ppe} & $156{,}832$    & $2.115 \pm 0.029$ & $0.256 \pm 0.009$ \\
 \midrule
 \multirow{6}{*}{128}
-    & \textsc{sum}        & $599{,}840$    & $3.254 \pm 0.009$ & $0.091 \pm 0.003$ \\
-    & \textsc{concat}     & $599{,}456$    & $2.234 \pm 0.018$ & $0.237 \pm 0.001$ \\
-    & \textsc{linear}     & $600{,}224$    & $2.226 \pm 0.026$ & $0.239 \pm 0.006$ \\
-    & \textsc{sum-ortho}  & $600{,}224$    & $2.227 \pm 0.026$ & $0.239 \pm 0.005$ \\
-    & \textsc{mlp}        & $616{,}352$    & $2.315 \pm 0.030$ & $0.221 \pm 0.007$ \\
-    & \textsc{linear-ppe} & $616{,}736$    & $\mathbf{2.215 \pm 0.040}$ & $\mathbf{0.243 \pm 0.008}$ \\
+    & \textsc{sum}        & $599{,}840$    & $3.260 \pm 0.010$ & $0.091 \pm 0.003$ \\
+    & \textsc{concat}     & $599{,}456$    & $2.229 \pm 0.031$ & $0.235 \pm 0.006$ \\
+    & \textsc{linear}     & $600{,}224$    & $2.234 \pm 0.032$ & $0.235 \pm 0.006$ \\
+    & \textsc{sum-ortho}  & $600{,}224$    & $2.233 \pm 0.032$ & $0.235 \pm 0.007$ \\
+    & \textsc{mlp}        & $616{,}352$    & $2.301 \pm 0.027$ & $0.222 \pm 0.007$ \\
+    & \textsc{linear-ppe} & $616{,}736$    & $2.185 \pm 0.032$ & $0.245 \pm 0.005$ \\
 \midrule
 \multirow{6}{*}{256}
-    & \textsc{sum}        & $2{,}379{,}296$ & $3.258 \pm 0.007$ & $0.092 \pm 0.001$ \\
-    & \textsc{concat}     & $2{,}378{,}528$ & $2.330 \pm 0.017$ & $0.216 \pm 0.004$ \\
-    & \textsc{linear}     & $2{,}380{,}064$ & $2.354 \pm 0.026$ & $0.216 \pm 0.006$ \\
-    & \textsc{sum-ortho}  & $2{,}380{,}064$ & $2.352 \pm 0.030$ & $0.216 \pm 0.007$ \\
-    & \textsc{mlp}        & $2{,}445{,}088$ & $2.405 \pm 0.025$ & $0.210 \pm 0.006$ \\
-    & \textsc{linear-ppe} & $2{,}445{,}856$ & $\mathbf{2.279 \pm 0.034}$ & $\mathbf{0.228 \pm 0.009}$ \\
+    & \textsc{sum}        & $2{,}379{,}296$ & $3.262 \pm 0.011$ & $0.091 \pm 0.003$ \\
+    & \textsc{concat}     & $2{,}378{,}528$ & $2.311 \pm 0.026$ & $0.217 \pm 0.004$ \\
+    & \textsc{linear}     & $2{,}380{,}064$ & $2.322 \pm 0.033$ & $0.217 \pm 0.006$ \\
+    & \textsc{sum-ortho}  & $2{,}380{,}064$ & $2.323 \pm 0.036$ & $0.217 \pm 0.006$ \\
+    & \textsc{mlp}        & $2{,}445{,}088$ & $2.407 \pm 0.023$ & $0.210 \pm 0.007$ \\
+    & \textsc{linear-ppe} & $2{,}445{,}856$ & $2.265 \pm 0.026$ & $0.229 \pm 0.006$ \\
 \bottomrule
 \end{tabular}
 \end{table}

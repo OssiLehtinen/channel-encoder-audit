@@ -1,42 +1,45 @@
 \begin{table}[t]
 \centering
-\caption{Scaling with channel count. Channels $0$--$3$ drive the outcome;
-additional channels are independent distractors. 300 epochs with cosine
-decay, mean $\pm$ std over 5 seeds. \textsc{cat} is skipped at $C{=}16$
-because its $\mathcal{O}((CT)^2)$ attention cost explodes.}
+\caption{Scaling with channel count. Channels $0$--$3$ drive the
+outcome; additional channels are independent distractors. 300 epochs
+with cosine decay, mean $\pm$ std over 20 seeds. \textsc{cat} is
+skipped at $C{=}16$ because its $\mathcal{O}((CT)^2)$ attention cost
+explodes. Sub-band sub-tables span the within-cell standard error
+times a t-quantile; encoder-vs-encoder paired tests reported in the
+text use the same paired-seed design across encoders.}
 \label{tab:scaling}
 \begin{tabular}{llcc}
 \toprule
 $C$ & encoder & val NLL $\downarrow$ & val acc $\uparrow$ \\
 \midrule
 \multirow{8}{*}{4}
-    & \textsc{sum}        & $3.252 \pm 0.009$ & $0.092 \pm 0.003$ \\
-    & \textsc{ci}         & $3.054 \pm 0.007$ & $0.139 \pm 0.003$ \\
-    & \textsc{cat}        & $2.360 \pm 0.073$ & $0.210 \pm 0.014$ \\
-    & \textsc{concat}     & $2.183 \pm 0.030$ & $0.240 \pm 0.005$ \\
-    & \textsc{mlp}        & $2.171 \pm 0.029$ & $0.244 \pm 0.008$ \\
-    & \textsc{sum-ortho}  & $2.170 \pm 0.016$ & $0.245 \pm 0.006$ \\
-    & \textsc{linear}     & $2.170 \pm 0.016$ & $0.243 \pm 0.005$ \\
-    & \textsc{linear-ppe} & $2.116 \pm 0.034$ & $0.257 \pm 0.009$ \\
+    & \textsc{sum}        & $3.257 \pm 0.011$ & $0.091 \pm 0.003$ \\
+    & \textsc{ci}         & $3.053 \pm 0.013$ & $0.136 \pm 0.004$ \\
+    & \textsc{cat}        & $2.348 \pm 0.060$ & $0.212 \pm 0.011$ \\
+    & \textsc{concat}     & $2.170 \pm 0.025$ & $0.243 \pm 0.006$ \\
+    & \textsc{mlp}        & $2.177 \pm 0.022$ & $0.242 \pm 0.007$ \\
+    & \textsc{sum-ortho}  & $2.155 \pm 0.020$ & $0.247 \pm 0.006$ \\
+    & \textsc{linear}     & $2.155 \pm 0.019$ & $0.247 \pm 0.006$ \\
+    & \textsc{linear-ppe} & $2.114 \pm 0.029$ & $0.256 \pm 0.009$ \\
 \midrule
 \multirow{8}{*}{8}
-    & \textsc{sum}        & $3.301 \pm 0.005$ & $0.081 \pm 0.002$ \\
-    & \textsc{ci}         & $3.056 \pm 0.013$ & $0.136 \pm 0.004$ \\
-    & \textsc{cat}        & $2.372 \pm 0.110$ & $0.207 \pm 0.017$ \\
-    & \textsc{concat}     & $2.222 \pm 0.012$ & $0.232 \pm 0.005$ \\
-    & \textsc{mlp}        & $2.213 \pm 0.013$ & $0.234 \pm 0.005$ \\
-    & \textsc{sum-ortho}  & $2.167 \pm 0.013$ & $0.246 \pm 0.003$ \\
-    & \textsc{linear}     & $2.169 \pm 0.014$ & $0.244 \pm 0.003$ \\
-    & \textsc{linear-ppe} & $2.133 \pm 0.019$ & $0.251 \pm 0.005$ \\
+    & \textsc{sum}        & $3.300 \pm 0.006$ & $0.081 \pm 0.004$ \\
+    & \textsc{ci}         & $3.062 \pm 0.016$ & $0.135 \pm 0.004$ \\
+    & \textsc{cat}        & $2.334 \pm 0.073$ & $0.213 \pm 0.011$ \\
+    & \textsc{concat}     & $2.234 \pm 0.023$ & $0.231 \pm 0.005$ \\
+    & \textsc{mlp}        & $2.211 \pm 0.027$ & $0.236 \pm 0.005$ \\
+    & \textsc{sum-ortho}  & $2.176 \pm 0.022$ & $0.244 \pm 0.006$ \\
+    & \textsc{linear}     & $2.176 \pm 0.022$ & $0.243 \pm 0.006$ \\
+    & \textsc{linear-ppe} & $2.150 \pm 0.030$ & $0.249 \pm 0.006$ \\
 \midrule
 \multirow{7}{*}{16}
-    & \textsc{sum}        & $3.309 \pm 0.004$ & $0.075 \pm 0.003$ \\
-    & \textsc{ci}         & $3.078 \pm 0.024$ & $0.132 \pm 0.007$ \\
-    & \textsc{concat}     & $2.337 \pm 0.034$ & $0.211 \pm 0.006$ \\
-    & \textsc{sum-ortho}  & $2.297 \pm 0.034$ & $0.222 \pm 0.008$ \\
-    & \textsc{linear}     & $2.289 \pm 0.026$ & $0.221 \pm 0.006$ \\
-    & \textsc{linear-ppe} & $2.281 \pm 0.033$ & $0.224 \pm 0.006$ \\
-    & \textsc{mlp}        & $2.221 \pm 0.021$ & $0.234 \pm 0.004$ \\
+    & \textsc{sum}        & $3.310 \pm 0.004$ & $0.075 \pm 0.003$ \\
+    & \textsc{ci}         & $3.078 \pm 0.017$ & $0.133 \pm 0.005$ \\
+    & \textsc{concat}     & $2.340 \pm 0.033$ & $0.215 \pm 0.008$ \\
+    & \textsc{sum-ortho}  & $2.267 \pm 0.038$ & $0.227 \pm 0.007$ \\
+    & \textsc{linear}     & $2.267 \pm 0.032$ & $0.226 \pm 0.007$ \\
+    & \textsc{linear-ppe} & $2.252 \pm 0.038$ & $0.230 \pm 0.008$ \\
+    & \textsc{mlp}        & $2.231 \pm 0.032$ & $0.234 \pm 0.004$ \\
 \bottomrule
 \end{tabular}
 \end{table}
