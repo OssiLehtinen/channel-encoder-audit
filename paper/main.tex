@@ -260,6 +260,12 @@ with $W_{\text{pos}} \in \mathbb{R}^{d_{\text{model}} \times
 d_{\text{model}}}$. This lets the optimiser rotate the positional
 subspace to be orthogonal to the channel subspace. Adds
 $d_{\text{model}}^2 + d_{\text{model}}$ parameters (4{,}160 at $d{=}64$).
+The construction is closely related to the untied positional
+embedding of \citet{ke2021rethinking}, which removes the additive
+position--content coupling at the input layer of language
+transformers via a separate projection; \textsc{linear-ppe} applies
+the same decoupling principle to the channel--position competition
+in time-series transformers.
 
 \paragraph{\textsc{mlp}.} Two-layer MLP on the channel vector:
 $\mathbf{h}(t) = W_2\,\text{GELU}(W_1\,\mathbf{v}(t) + \mathbf{b}_1)
@@ -464,18 +470,21 @@ driver/distractor split.
 
 \paragraph{Linear-probing analysis.}
 The encoder lays down a representation; the question is whether
-downstream attention and FFN layers preserve enough of it that each
-channel remains linearly identifiable several blocks deep. The
-pre-LayerNorm transformer's residual structure already makes a
-zeroth-order prediction here: each block applies $h \leftarrow h +
-\text{Attn}(\text{LN}(h))$ and $h \leftarrow h +
+downstream attention and FFN layers preserve enough of it that
+each channel remains linearly identifiable several blocks deep.
+The pre-LayerNorm transformer's residual structure already makes
+a zeroth-order prediction here: each block applies $h \leftarrow
+h + \text{Attn}(\text{LN}(h))$ and $h \leftarrow h +
 \text{FFN}(\text{LN}(h))$, so an unmodified copy of the input
-embedding is carried forward through every block. We should
-therefore expect deep linear probes to recover whatever was written
-to the residual stream at layer~$0$, modulo what LayerNorm rescales
-and what the sublayers additively perturb. We test this directly by
-training closed-form ridge probes from a frozen hidden state back
-to the raw input.
+embedding is carried forward through every block. Under the
+residual-stream view formalised by \citet{elhage2021framework},
+the residual stream is a communication bus that sublayers read
+from and additively write into; we should therefore expect deep
+linear probes \citep{alain2017probes} to recover whatever was
+written to the residual stream at layer~$0$, modulo what LayerNorm
+rescales and what the sublayers additively perturb. We test this
+directly by training closed-form ridge probes from a frozen hidden
+state back to the raw input.
 
 Procedure: (1)~train the encoder--transformer end-to-end as usual;
 (2)~freeze it; (3)~generate a fresh probe dataset
@@ -1187,10 +1196,12 @@ Section~\ref{sec:method-diagnostics}: per-channel-$W_k$ encoders
 write near-orthogonal channel directions into the residual stream
 at layer~$0$ and the pre-LN architecture preserves them through
 every block essentially by construction, since LayerNorm only
-rescales and the additive residual keeps them in the basis. The
-geometric argument in this paper is self-consistent: the encoder
-chooses the subspace, the backbone passes it forward, and the
-deep-probe recoverability falls out of both.
+rescales and the additive residual keeps them in the basis. This
+is the mechanistic-interpretability picture of the residual stream
+as an additive communication channel
+\citep{elhage2021framework} applied at the level of input
+channels: the encoder chooses the subspace, the backbone passes
+it forward, and the deep-probe recoverability falls out of both.
 
 \paragraph{Reading for non-numerical inputs.}
 The mechanism is geometric and encoding-agnostic, which suggests
@@ -1286,18 +1297,52 @@ for feature decorrelation. We apply the same idea to per-channel input
 projections and find it unnecessary: the task loss produces the same
 geometry.
 
-\paragraph{Linear baselines in time-series forecasting.}
+\paragraph{Linear and MLP baselines in time-series forecasting.}
 \citet{zeng2023transformers} showed that simple linear forecasters
 (\textsc{DLinear}, \textsc{NLinear}) match or beat several
-transformer architectures on standard multivariate benchmarks, an
-observation that prompted a re-examination of where transformers
-actually add value in this setting. Our work is on the orthogonal
-question of how the input layer of a transformer should embed
-multiple channels rather than whether a transformer is needed at
-all; the two lines of evidence are compatible---a linear input
-projection is also a strong default---and our \textsc{linear}
-baseline can be read as carrying that lesson inside the encoder
-even when the backbone is non-linear.
+transformer architectures on standard multivariate benchmarks,
+prompting a re-examination of where transformers actually add
+value in this setting. \citet{chen2023tsmixer} make a parallel
+point with an all-MLP architecture (\textsc{TSMixer}) that
+explicitly separates channel-mixing from time-mixing and remains
+competitive with transformer baselines. Our work is on the
+orthogonal question of how the input layer of a transformer should
+embed multiple channels rather than whether a transformer is
+needed at all; the two lines of evidence are compatible---a linear
+input projection is also a strong default---and our \textsc{linear}
+baseline carries that lesson inside the encoder even when the
+backbone is non-linear. The relationship to \textsc{TSMixer} is
+particularly direct: \textsc{TSMixer}'s channel-mixing MLP is
+essentially our \textsc{mlp} encoder used as the centrepiece
+rather than as an input stem.
+
+\paragraph{Channel-importance weighting.}
+Variable Selection Networks in the Temporal Fusion Transformer
+\citep{lim2021tft} explicitly learn per-channel importance weights
+via a gating mechanism on top of per-channel embeddings, on the
+hypothesis that channels need an architectural mechanism to be
+weighted by relevance. Our encoding-space-allocation result
+(Section~\ref{sec:results-space}) is partly negative evidence for
+that hypothesis in the synthetic setting: a bare
+\texttt{nn.Linear} discovers the driver/distractor split through
+its learned $\|W_k\|$ alone, with no explicit weighting
+mechanism. We do not claim this generalises to the harder
+settings TFT was designed for---static covariates, mixed
+categorical/continuous inputs, long-horizon multi-step
+forecasting---but at least for the homogeneous-numerical input
+case the explicit selection mechanism is solving a problem the
+encoder already solves.
+
+\paragraph{Decoupling position from content.}
+\citet{ke2021rethinking} showed that untying positional embeddings
+from content embeddings---routing position through a separate
+projection rather than additively combining them at the input---
+improves transformer language models. \textsc{linear-ppe} applies
+the same principle to the channel--position competition in
+time-series transformers, and the direct geometric measurement in
+Section~\ref{sec:results-pospro} identifies the mechanism as the
+same one: position is rotated out of the channel subspace so the
+two stop competing for the same residual-stream coordinates.
 
 % ======================================================================
 \section{Conclusion}
@@ -1378,6 +1423,39 @@ N.~Bansal, X.~Chen, and Z.~Wang.
 A.~Zeng, M.~Chen, L.~Zhang, and Q.~Xu.
 \newblock Are transformers effective for time series forecasting?
 \newblock In \emph{AAAI}, 2023.
+
+\bibitem[Ke et al.(2021)]{ke2021rethinking}
+G.~Ke, D.~He, and T.-Y. Liu.
+\newblock Rethinking positional encoding in language pre-training.
+\newblock In \emph{ICLR}, 2021.
+
+\bibitem[Lim et al.(2021)]{lim2021tft}
+B.~Lim, S.~\"O. Ar{\i}k, N.~Loeff, and T.~Pfister.
+\newblock Temporal fusion transformers for interpretable multi-horizon
+  time series forecasting.
+\newblock \emph{International Journal of Forecasting},
+  37(4):1748--1764, 2021.
+
+\bibitem[Chen et al.(2023)]{chen2023tsmixer}
+S.-A. Chen, C.-L. Li, N.~Yoder, S.~O. Ar{\i}k, and T.~Pfister.
+\newblock {TSMixer}: an all-{MLP} architecture for time series
+  forecasting.
+\newblock \emph{Transactions on Machine Learning Research}, 2023.
+
+\bibitem[Elhage et al.(2021)]{elhage2021framework}
+N.~Elhage, N.~Nanda, C.~Olsson, T.~Henighan, N.~Joseph, B.~Mann,
+  A.~Askell, Y.~Bai, A.~Chen, T.~Conerly, N.~DasSarma,
+  D.~Drain, D.~Ganguli, Z.~Hatfield-Dodds, D.~Hernandez,
+  A.~Jones, J.~Kernion, L.~Lovitt, K.~Ndousse, D.~Amodei,
+  T.~Brown, J.~Clark, J.~Kaplan, S.~McCandlish, and C.~Olah.
+\newblock A mathematical framework for transformer circuits.
+\newblock \emph{Transformer Circuits Thread}, 2021.
+
+\bibitem[Alain and Bengio(2017)]{alain2017probes}
+G.~Alain and Y.~Bengio.
+\newblock Understanding intermediate layers using linear classifier
+  probes.
+\newblock In \emph{ICLR Workshop}, 2017.
 \end{thebibliography}
 
 \end{document}
