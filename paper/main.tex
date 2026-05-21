@@ -35,14 +35,18 @@ projections, an orthogonality regulariser, a nonlinear MLP stem,
 block-partitioned concatenation, channel-independent and channel-as-token
 architectures, and a projected positional encoding---on a synthetic
 benchmark where channel identity is informative and on ETTh1 as a
-real-data check. The standard per-channel linear projection
+real-data check. At convergence the standard per-channel linear projection
 (\texttt{nn.Linear(C, $d_{\text{model}}$)}) matches every alternative
-except one: a variant that projects the sinusoidal positional encoding
-through a learned linear layer, allowing the positional and channel
-subspaces to become orthogonal, which yields a consistent ${\sim}0.05$
-NLL gain. A gram-matrix analysis shows the task loss drives channel
-projections to near-orthogonality spontaneously and scales their norms
-proportionally to channel importance.
+we test to within seed noise. A variant that projects the sinusoidal
+positional encoding through a learned linear layer
+(\textsc{linear-ppe}) shows a small (${\sim}0.05$ NLL) advantage at
+$C{=}4$ on five seeds---suggestive but at the edge of what our sample
+resolves, and with the underlying mechanism (positional--channel
+orthogonalisation vs.\ positional subspace compression) not pinned
+down by the present data. A gram-matrix analysis shows the task loss
+drives channel projections to near-orthogonality without explicit
+regularisation, and learned norms are systematically larger for the
+outcome-relevant channels.
 Code: \url{https://github.com/OssiLehtinen/FDM-encoding}.
 \end{abstract}
 
@@ -87,14 +91,16 @@ and can this interaction be improved?
 \paragraph{Our contribution.}
 We compare eight encoders on a controlled synthetic benchmark designed
 to make channel identity informative, with supporting experiments on
-the public ETTh1 dataset. We find that: (i)~the per-channel linear projection matches
-every alternative at convergence; (ii)~a shared-scalar baseline has
-a sharp, capacity-independent ceiling; (iii)~the task loss drives the
-learned $W_k$ to near-orthogonal subspaces and scales their norms by
-channel importance; and (iv)~projecting the sinusoidal positional
-encoding through a learned linear layer yields a consistent further
-gain by allowing the positional and channel subspaces to become
-orthogonal.
+the public ETTh1 dataset. We find that: (i)~the per-channel linear
+projection matches every alternative at convergence; (ii)~a
+shared-scalar baseline has a sharp, capacity-independent ceiling;
+(iii)~the task loss drives the learned $W_k$ to near-orthogonal
+subspaces and scales their norms larger for outcome-relevant channels;
+and (iv)~projecting the sinusoidal positional encoding through a
+learned linear layer (\textsc{linear-ppe}) shows a small improvement
+at $C{=}4$ that is at the edge of what five seeds can resolve, with
+a mechanism (orthogonalisation vs.\ compression of the positional
+subspace) we cannot pin down from the present data.
 
 % ======================================================================
 \section{Method}
@@ -316,13 +322,16 @@ $C{=}16$ & $1.20$ & $0.74$ & $46.6\%$ & $53.4\%$ \\
 \end{tabular}
 \end{table}
 
-Driver channels receive ${\sim}1.6{\times}$ larger norms than
-distractors, a ratio stable across $C{=}8$ and $C{=}16$. At $C{=}8$
-the four drivers capture $72\%$ of the embedding variance. Within
-drivers, the norm ordering mirrors the outcome formula: ch0 and ch1
-(multiplicative interaction) get the largest norms, ch3 (indicator only)
-the smallest. The linear projection thus both separates channels
-\emph{and} weights them by task relevance.
+Driver channels receive ${\sim}1.6{\times}$ larger seed-averaged norms
+than distractors at both $C{=}8$ and $C{=}16$. The aggregate variance
+share at $C{=}8$ is $72\%$ for the four drivers; at $C{=}16$ the
+aggregate driver share is closer to half ($46.6\%$) because there are
+now twelve distractors, but the per-channel variance contribution is
+still larger for drivers ($\sim$$12\%$ each vs.\ $\sim$$4\%$ each).
+We do not report per-channel error bars on the norms, and the
+fine-grained ordering within drivers is descriptive only; the robust
+claim is the driver/distractor gap, which holds at both channel
+counts.
 
 \subsection{Channel identifiability via linear probing}
 \label{sec:results-probe}
@@ -358,8 +367,8 @@ rerun at $3{\times}$ the training budget (300 epochs, $C{=}4$):
 \toprule
 encoder & val NLL $\downarrow$ & val acc $\uparrow$ \\
 \midrule
-\textbf{\textsc{linear-ppe}} & $\mathbf{2.120 \pm 0.033}$ & $\mathbf{0.258 \pm 0.009}$ \\
-\textsc{linear}    & $2.169 \pm 0.014$ & $0.248 \pm 0.004$ \\
+\textsc{linear-ppe} & $2.120 \pm 0.033$ & $0.258 \pm 0.009$ \\
+\textsc{linear}     & $2.169 \pm 0.014$ & $0.248 \pm 0.004$ \\
 \textsc{sum-ortho} & $2.170 \pm 0.014$ & $0.246 \pm 0.004$ \\
 \textsc{mlp}       & $2.170 \pm 0.032$ & $0.244 \pm 0.010$ \\
 \textsc{concat}    & $2.183 \pm 0.032$ & $0.243 \pm 0.006$ \\
@@ -368,13 +377,15 @@ encoder & val NLL $\downarrow$ & val acc $\uparrow$ \\
 \end{table}
 
 \textsc{linear}, \textsc{sum-ortho}, \textsc{mlp}, and \textsc{concat}
-converge to the same NLL within seed noise. The MLP stem's
-$9{\times}$ extra parameters offer no benefit---nonlinearity at the
-input layer is redundant. \textsc{linear-ppe} pulls ahead by
-${\sim}0.05$ NLL, a gap exceeding seed std. The improvement comes from
-the positional subspace rotating away from the channel directions,
-reducing interference at the embedding layer. The channel encoding
-itself remains a single linear layer.
+sit within seed std of each other---we read this as the same ceiling.
+The MLP stem's $9{\times}$ extra parameters offer no benefit at this
+budget. \textsc{linear-ppe} shows a ${\sim}0.05$ NLL advantage over
+\textsc{linear}; the gap exceeds either run's seed std but with five
+seeds we treat it as suggestive rather than established. The channel
+encoding itself remains a single linear layer in either case. We
+discuss possible mechanisms (positional--channel orthogonalisation
+vs.\ positional subspace compression) below, but neither is pinned
+down by the present data.
 
 \subsection{Real-data validation: ETTh1}
 \label{sec:results-etth1}
@@ -414,16 +425,28 @@ changing NLL. The task loss provides the gradient pressure.
 the same NLL. A linear projection of the channel vector is sufficient.
 
 \paragraph{Importance weighting is automatic.}
-At $C{=}8$, driver channels get $1.6{\times}$ larger $\|W_k\|$ norms
-and $72\%$ of the variance. The model separates \emph{and} weights.
+At $C{=}8$, driver channels get ${\sim}1.6{\times}$ larger
+seed-averaged $\|W_k\|$ norms and a clear majority of the embedding
+variance; the same ratio holds at $C{=}16$. We do not have per-channel
+error bars, so the fine-grained ordering within drivers is descriptive
+only, but the driver/distractor gap is robust across two channel
+counts.
 
-\paragraph{Positional--channel orthogonality matters.}
-The one variant beating \textsc{linear} is \textsc{linear-ppe}:
-projecting sinusoidal positions through a learned linear layer allows
-the positional subspace to avoid the channel subspace. The gain
-(${\sim}0.05$ NLL at $C{=}4$) is modest but consistent, and follows
-from the same geometric principle that drives channel--channel
-orthogonality.
+\paragraph{Projected positional encoding: small effect, unsettled mechanism.}
+At $C{=}4$ on five seeds, \textsc{linear-ppe} sits ${\sim}0.05$ NLL
+below \textsc{linear}---a gap that exceeds either run's seed std but
+is borderline at this sample size, and we have not measured it at
+other channel counts in the converged regime. The mechanism is also
+not pinned down. Two readings are consistent with the data:
+(i)~projecting position into a learned subspace orients it away from
+the channel directions; or (ii)~it compresses position into fewer
+effective coordinates, freeing residual-stream capacity. Since fixed
+sinusoidal positions at $d_{\text{model}}{=}64, T{=}160$ already fill
+most directions, free $W_k$ columns can in principle place themselves
+in the lowest-energy positional directions, so (ii) is plausible. A
+direct test---principal angles between $\text{span}(W_k)$ and the
+effective positional basis, plus the effective rank of that basis
+under \textsc{linear} vs.\ \textsc{linear-ppe}---we have not run.
 
 \paragraph{Architectural baselines.}
 \textsc{ci} and \textsc{cat} give each channel nominally more capacity
@@ -505,17 +528,17 @@ geometry.
 On tasks where channel identity is informative, a per-channel linear
 projection (\texttt{nn.Linear(C, $d_{\text{model}}$)}) matches every
 more elaborate encoder we tested. The task loss drives the channel
-projections to near-orthogonality and scales their norms by importance.
-A shared-scalar projection has a capacity-independent ceiling.
-Nonlinearity, block partitioning, orthogonality penalties,
-channel-independent and channel-as-token architectures---none improve
-on the bare linear layer. The one modification that does help is
-projecting the sinusoidal positional encoding through a learned linear
-layer (\textsc{linear-ppe}), which allows the positional and channel
-subspaces to become orthogonal. The practical recommendation is simple:
-use \texttt{nn.Linear(C, $d_{\text{model}}$)} for the channel encoding,
-optionally with a projected positional encoding, and spend the
-complexity budget elsewhere.
+projections to near-orthogonality, and learned norms are larger for
+outcome-relevant channels. A shared-scalar projection has a
+capacity-independent ceiling. Nonlinearity, block partitioning,
+orthogonality penalties, channel-independent and channel-as-token
+architectures---none improve on the bare linear layer within seed
+noise. Projecting the sinusoidal positional encoding through a learned
+linear layer (\textsc{linear-ppe}) shows a small advantage at $C{=}4$
+that is at the edge of what five seeds resolve and whose mechanism we
+cannot pin down here. The practical recommendation is simple: use
+\texttt{nn.Linear(C, $d_{\text{model}}$)} for the channel encoding,
+and spend the complexity budget elsewhere.
 
 \bibliographystyle{plainnat}
 \begin{thebibliography}{9}
