@@ -523,7 +523,8 @@ def stage_pospro_geometry(args, device) -> dict:
 # Stage 7e: open-ended round-robin extra seeds
 # ---------------------------------------------------------------------------
 
-_EXTRA_STAGES = ["main", "etth1", "main_largen", "dmodel", "geom_largen"]
+_EXTRA_STAGES = ["main", "etth1", "main_largen", "dmodel", "geom_largen",
+                 "geometry", "pospro_geometry"]
 
 
 def _extra_done(out_dir: str, s: int) -> bool:
@@ -556,6 +557,9 @@ def stage_extra_seeds(args, device) -> None:
     print(f"  stages per cycle: {_EXTRA_STAGES}", flush=True)
 
     for s in itertools.count(args.extra_seeds_start):
+        # Recreate output dir at every cycle in case an external process
+        # removed it between cycles.
+        os.makedirs(out_dir, exist_ok=True)
         if _extra_done(out_dir, s):
             print(f"\n----- Seed {s}: already complete on disk, skipping -----",
                   flush=True)
@@ -666,6 +670,105 @@ def stage_extra_seeds(args, device) -> None:
                   f"nll={r['best_val_nll']:.4f} "
                   f"mean|cos|={gram['mean_off_abs_cos']:.4f} "
                   f"({time.time()-t0:.1f}s)", flush=True)
+
+        # 6) geometry at this seed: linear at C in {4,8,16} and sum-ortho
+        # at C=4. Saves the gram + variance diagnostics so future
+        # paired/bootstrap analysis on Table 5/6 numbers has more seeds.
+        geom_path = os.path.join(out_dir, f"geometry_s{s:03d}.json")
+        if not os.path.exists(geom_path):
+            geom_out: dict = {"linear": [], "sum_ortho": []}
+            for C in args.Cs:
+                cfg = RunCfg(encoder="linear", C=C, seed=s,
+                             epochs=args.epochs, n_series=args.n_series)
+                t0 = time.time()
+                r, model, val_loader = train_and_trace(
+                    cfg, device, log_every=args.log_every, return_model=True)
+                gram = model.encoder.gram_stats()
+                xs = [xb for xb, _ in val_loader]
+                x_all = torch.cat(xs, 0).to(device)
+                var = model.encoder.variance_stats(x_all)
+                geom_out["linear"].append(dict(
+                    C=C, seed=s,
+                    best_val_nll=r["best_val_nll"],
+                    norms=gram["norms"],
+                    max_off_abs_cos=gram["max_off_abs_cos"],
+                    mean_off_abs_cos=gram["mean_off_abs_cos"],
+                    var_fraction=var["var_fraction"],
+                ))
+                print(f"  [geometry linear  C={C:>2} s={s}] "
+                      f"nll={r['best_val_nll']:.4f} "
+                      f"mean|cos|={gram['mean_off_abs_cos']:.4f} "
+                      f"({time.time()-t0:.1f}s)", flush=True)
+            cfg = RunCfg(encoder="sum-ortho", C=4, seed=s,
+                         epochs=args.epochs, n_series=args.n_series)
+            t0 = time.time()
+            r, model, _ = train_and_trace(
+                cfg, device, log_every=args.log_every, return_model=True)
+            gram = model.encoder.gram_stats()
+            geom_out["sum_ortho"].append(dict(
+                C=4, seed=s,
+                best_val_nll=r["best_val_nll"],
+                norms=gram["norms"],
+                max_off_abs_cos=gram["max_off_abs_cos"],
+                mean_off_abs_cos=gram["mean_off_abs_cos"],
+            ))
+            print(f"  [geometry sum-ortho C= 4 s={s}] "
+                  f"nll={r['best_val_nll']:.4f} "
+                  f"mean|cos|={gram['mean_off_abs_cos']:.4f} "
+                  f"({time.time()-t0:.1f}s)", flush=True)
+            with open(geom_path, "w") as f:
+                json.dump(geom_out, f, indent=2)
+
+        # 7) pospro_geometry at this seed: linear and linear-ppe at C=4
+        # with the mechanism diagnostics (effective rank of P, principal
+        # angles, fraction of P energy in span(W)).
+        pos_path = os.path.join(out_dir, f"pospro_geometry_s{s:03d}.json")
+        if not os.path.exists(pos_path):
+            pg_out: dict = {"linear": [], "linear_ppe": []}
+            for enc, key in [("linear", "linear"),
+                             ("linear-ppe", "linear_ppe")]:
+                cfg = RunCfg(encoder=enc, C=4, seed=s,
+                             epochs=args.epochs, n_series=args.n_series)
+                t0 = time.time()
+                r, model, _ = train_and_trace(
+                    cfg, device, log_every=args.log_every, return_model=True)
+                W = model.encoder.W.detach().cpu().numpy()
+                T = cfg.T
+                pos_fixed = model.encoder.pos[:T].cpu().numpy()
+                if enc == "linear-ppe":
+                    W_pos = (model.encoder.pos_proj.weight
+                             .detach().cpu().numpy())
+                    b_pos = (model.encoder.pos_proj.bias
+                             .detach().cpu().numpy())
+                    P = pos_fixed @ W_pos.T + b_pos
+                else:
+                    P = pos_fixed
+                sP = np.linalg.svd(P, compute_uv=False)
+                sP_sq = sP ** 2
+                pi = sP_sq / sP_sq.sum()
+                entropy_rank = float(np.exp(-(pi * np.log(pi + 1e-30)).sum()))
+                rank_99 = int(((np.cumsum(sP_sq) / sP_sq.sum()) < 0.99).sum() + 1)
+                angles_deg = np.degrees(_principal_angles(W, P))
+                Q_W, _ = np.linalg.qr(W.T)
+                frac = float(((P @ Q_W) ** 2).sum() / (P ** 2).sum())
+                pg_out[key].append(dict(
+                    encoder=enc, seed=s,
+                    best_val_nll=r["best_val_nll"],
+                    P_singular_values=sP.tolist(),
+                    P_entropy_rank=entropy_rank,
+                    P_rank_99=rank_99,
+                    principal_angles_deg=angles_deg.tolist(),
+                    min_principal_angle_deg=float(angles_deg.min()),
+                    mean_principal_angle_deg=float(angles_deg.mean()),
+                    frac_P_energy_in_span_W=frac,
+                ))
+                print(f"  [pospro_geom {enc:>10} s={s}] "
+                      f"nll={r['best_val_nll']:.4f} "
+                      f"eff_rank={entropy_rank:.2f} "
+                      f"frac(P in span W)={frac:.3f} "
+                      f"({time.time()-t0:.1f}s)", flush=True)
+            with open(pos_path, "w") as f:
+                json.dump(pg_out, f, indent=2)
 
         cycle_secs = time.time() - cycle_t0
         print(f"----- Seed {s} cycle done in {cycle_secs:.0f}s "
