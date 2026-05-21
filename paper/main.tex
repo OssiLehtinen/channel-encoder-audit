@@ -810,6 +810,55 @@ Zeroing one channel at test time (Table~\ref{tab:mask}), the top-tier
 encoders show sharp, interpretable per-channel accuracy drops that
 match the outcome formula. \textsc{sum} is nearly flat.
 
+\subsection{Convergence and wall-clock cost}
+\label{sec:results-convergence}
+
+A natural worry is that more involved encoders---an MLP stem, a
+projected positional layer, an orthogonality regulariser---might cost
+extra training time even when they don't change the ceiling. From the
+300-epoch traces (val NLL recorded every 20 epochs, $C{=}4$,
+5 seeds) we extract two diagnostics: the epoch at which each run
+first reaches within $0.05$ NLL of its own best, and the wall-clock
+seconds per epoch, normalised to \textsc{linear}.
+
+\begin{table}[h]
+\centering
+\caption{Convergence speed and wall-clock cost ($C{=}4$, 300 epochs,
+5 seeds, single GPU). Epochs-to-target is rounded to the trace
+resolution of 20 epochs. Cost is per-epoch wall time normalised to
+\textsc{linear}.}
+\label{tab:convergence}
+\begin{tabular}{lccc}
+\toprule
+encoder & best NLL & epoch to NLL $+0.05$ & relative cost \\
+\midrule
+\textsc{linear}     & $2.170$ & $\sim$152 & $1.00\times$ \\
+\textsc{sum-ortho}  & $2.170$ & $\sim$156 & $1.04\times$ \\
+\textsc{mlp}        & $2.171$ & $\sim$144 & $1.01\times$ \\
+\textsc{concat}     & $2.183$ & $\sim$152 & $1.00\times$ \\
+\textsc{linear-ppe} & $2.116$ & $\sim$148 & $0.99\times$ \\
+\midrule
+\textsc{sum}        & $3.252$ & $\sim$20 (plateau) & $1.00\times$ \\
+\textsc{ci}         & $3.054$ & $\sim$20 (plateau) & $2.3\times$ \\
+\textsc{cat}        & $2.360$ & $\sim$180 & $5.2\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The five top-tier encoders reach within $0.05$ NLL of their final
+value at the same trace point ($\sim$150 epochs) and cost essentially
+the same per-epoch wall time---the transformer backbone dominates, so
+encoder choice within this family is free. In particular, the MLP
+stem's $9{\times}$ extra parameters do not slow convergence.
+
+\textsc{ci} and \textsc{cat} pay substantial wall-clock costs from
+their architectures, not their input encoders: $\sim$2.3$\times$
+\textsc{linear} at $C{=}4$ for \textsc{ci} (scaling to ${\sim}8\times$
+at $C{=}16$) and $\sim$5$\times$ at $C{=}4$ for \textsc{cat} (scaling
+with $C^2T^2$ to ${\sim}17\times$ at $C{=}8$). On the synthetic
+benchmark \textsc{cat} also converges to its worse ceiling later than
+the top tier reaches its ceiling.
+
 \subsection{Positional projection: a small but robust effect at $C{=}4$}
 \label{sec:results-pospro}
 
@@ -927,58 +976,6 @@ rotation-based advantage persists across a $4{\times}$ range of
 widths, including in the regime where the model is otherwise
 overfitting at the larger widths.
 
-\subsection{Convergence and wall-clock cost}
-\label{sec:results-convergence}
-
-A natural worry is that more involved encoders---an MLP stem, a
-projected positional layer, an orthogonality regulariser---might cost
-extra training time even when they don't change the ceiling. From the
-300-epoch traces (val NLL recorded every 20 epochs, $C{=}4$,
-5 seeds) we extract two diagnostics: the epoch at which each run
-first reaches within $0.05$ NLL of its own best, and the wall-clock
-seconds per epoch, normalised to \textsc{linear}.
-
-\begin{table}[h]
-\centering
-\caption{Convergence speed and wall-clock cost ($C{=}4$, 300 epochs,
-5 seeds, single GPU). Epochs-to-target is rounded to the trace
-resolution of 20 epochs. Cost is per-epoch wall time normalised to
-\textsc{linear}.}
-\label{tab:convergence}
-\begin{tabular}{lccc}
-\toprule
-encoder & best NLL & epoch to NLL $+0.05$ & relative cost \\
-\midrule
-\textsc{linear}     & $2.170$ & $\sim$152 & $1.00\times$ \\
-\textsc{sum-ortho}  & $2.170$ & $\sim$156 & $1.04\times$ \\
-\textsc{mlp}        & $2.171$ & $\sim$144 & $1.01\times$ \\
-\textsc{concat}     & $2.183$ & $\sim$152 & $1.00\times$ \\
-\textsc{linear-ppe} & $2.116$ & $\sim$148 & $0.99\times$ \\
-\midrule
-\textsc{sum}        & $3.252$ & $\sim$20 (plateau) & $1.00\times$ \\
-\textsc{ci}         & $3.054$ & $\sim$20 (plateau) & $2.3\times$ \\
-\textsc{cat}        & $2.360$ & $\sim$180 & $5.2\times$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-The five top-tier encoders reach within $0.05$ NLL of their final
-value at the same trace point ($\sim$150 epochs) and cost essentially
-the same per-epoch wall time---the transformer backbone dominates, so
-encoder choice within this family is free. In particular, the MLP
-stem's $9{\times}$ extra parameters do not slow convergence. The
-\textsc{linear-ppe} advantage is present at every checkpoint, not
-just at the end ($2.225$ vs.\ $2.271$ NLL at epoch 100), so it is not
-a slow-burn late-training artefact.
-
-\textsc{ci} and \textsc{cat} pay substantial wall-clock costs from
-their architectures, not their input encoders: $\sim$2.3$\times$
-\textsc{linear} at $C{=}4$ for \textsc{ci} (scaling to ${\sim}8\times$
-at $C{=}16$) and $\sim$5$\times$ at $C{=}4$ for \textsc{cat} (scaling
-with $C^2T^2$ to ${\sim}17\times$ at $C{=}8$). On the synthetic
-benchmark \textsc{cat} also converges to its worse ceiling later than
-the top tier reaches its ceiling.
-
 \subsection{Real-data validation: ETTh1}
 \label{sec:results-etth1}
 
@@ -1067,8 +1064,34 @@ before the sum.
 with no penalty; the regulariser tightens to ${\approx}0.010$ without
 changing NLL. The task loss provides the gradient pressure.
 
-\paragraph{Nonlinearity is redundant at small $C$, harmful with width
-at small $C$, useful at large $C$.}
+\paragraph{Importance weighting is automatic.}
+At $C{=}8$, driver channels get ${\sim}2.2{\times}$ larger
+seed-averaged $\|W_k\|$ norms and $83\%$ of the embedding variance;
+at $C{=}16$ the norm ratio is ${\sim}2.1{\times}$ and per-channel
+variance contributions are ${\sim}4{\times}$ larger for drivers than
+for distractors. The driver/distractor gap is robust across two
+channel counts; the fine-grained ordering within drivers is
+descriptive only.
+
+\paragraph{The residual stream carries channel identity end-to-end.}
+Linear probes at layer 3 recover each channel to $R^2 \ge 0.84$;
+LayerNorm rescales but does not linearly mix coordinates. The deeper
+reason this works is the pre-LN transformer's residual structure: each
+block applies $h \leftarrow h + \text{Attn}(\text{LN}(h))$ and
+$h \leftarrow h + \text{FFN}(\text{LN}(h))$, so an unmodified copy of
+the input embedding is carried forward through every block. The
+per-channel projections injected at the input therefore persist into
+deep hidden states via the residual stream itself, not because
+attention or FFN sublayers learn to preserve them. Whatever
+near-orthogonal channel directions \textsc{linear} establishes at the
+embedding layer are still linearly recoverable several blocks deep
+because LayerNorm only rescales them and the additive residual keeps
+them in the basis. This makes the geometric argument in this paper
+self-consistent: per-channel-$W_k$ encoders write the channels into a
+near-orthogonal subspace at layer~0, and the architecture preserves
+that subspace by construction.
+
+\paragraph{When nonlinearity helps and when it hurts.}
 \textsc{mlp} matches \textsc{linear} at $C{=}4, d_{\text{model}}{=}64$
 with $9{\times}$ more encoder parameters and no faster convergence
 (Table~\ref{tab:convergence}); a linear projection of the channel
@@ -1098,15 +1121,6 @@ seed noise. The recommendation in the Conclusion still favours
 \textsc{linear} as the default---the gap is small, shrinks further
 with more data, and the architecture cost is real---but a one-line
 caveat is warranted for the high-$C$ regime.
-
-\paragraph{Importance weighting is automatic.}
-At $C{=}8$, driver channels get ${\sim}2.2{\times}$ larger
-seed-averaged $\|W_k\|$ norms and $83\%$ of the embedding variance;
-at $C{=}16$ the norm ratio is ${\sim}2.1{\times}$ and per-channel
-variance contributions are ${\sim}4{\times}$ larger for drivers than
-for distractors. The driver/distractor gap is robust across two
-channel counts; the fine-grained ordering within drivers is
-descriptive only.
 
 \paragraph{Projected positional encoding: small, robust at $C{=}4$,
 gone by $C{=}16$.}
@@ -1173,43 +1187,16 @@ time. Within the family that uses per-channel $W_k$ on a shared
 backbone, encoder choice does not change either the convergence
 schedule or compute budget.
 
-\paragraph{The residual stream carries channel identity end-to-end.}
-Linear probes at layer 3 recover each channel to $R^2 \ge 0.84$;
-LayerNorm rescales but does not linearly mix coordinates. The deeper
-reason this works is the pre-LN transformer's residual structure: each
-block applies $h \leftarrow h + \text{Attn}(\text{LN}(h))$ and
-$h \leftarrow h + \text{FFN}(\text{LN}(h))$, so an unmodified copy of
-the input embedding is carried forward through every block. The
-per-channel projections injected at the input therefore persist into
-deep hidden states via the residual stream itself, not because
-attention or FFN sublayers learn to preserve them. Whatever
-near-orthogonal channel directions \textsc{linear} establishes at the
-embedding layer are still linearly recoverable several blocks deep
-because LayerNorm only rescales them and the additive residual keeps
-them in the basis. This makes the geometric argument in this paper
-self-consistent: per-channel-$W_k$ encoders write the channels into a
-near-orthogonal subspace at layer~0, and the architecture preserves
-that subspace by construction.
-
 \paragraph{Reading for non-numerical inputs.}
-The mechanism we identify is geometric---distinct input streams need
-approximately orthogonal subspaces in $d_{\text{model}}$ so the model
-can recover stream-of-origin---and is encoding-agnostic. For
-multi-field categorical inputs, bag-of-embeddings pooling is the
-discrete analog of \textsc{sum}: field identity is irrecoverable
-unless the per-field embedding tables happen to land in disjoint
-subspaces, and an off-diagonal Gram penalty across embedding matrices
-would transfer directly. For multimodal tokens, per-modality
-projection heads (already standard) are the fix; the sharper claim
-is that they must remain \emph{linearly separable in the residual
-stream}, not merely come from different distributions. The
+The mechanism is geometric and encoding-agnostic: per-field embedding
+tables are the discrete analog of per-channel $W_k$, and
+bag-of-embeddings pooling is the discrete \textsc{sum}. The
 \textsc{linear-ppe} finding---that projecting positional signals into
-a learned subspace beats adding them---is the most readily
-transferable: it applies equally to discrete sequence models where
-position competes with token semantics for the same coordinates. We
-do not test any of this; the variance-contribution diagnostic in
-particular does not translate cleanly to discrete inputs and would
-need a probe-based analog.
+a learned subspace beats adding them---transfers most readily,
+applying to any discrete-sequence model where position competes with
+token semantics for the same coordinates. We do not test any of this;
+the variance-contribution diagnostic in particular does not translate
+cleanly to discrete inputs and would need a probe-based analog.
 
 % ======================================================================
 \section{Limitations}
