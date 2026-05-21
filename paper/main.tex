@@ -564,22 +564,34 @@ floor rather than being driven to zero.
 Several interventions would push distractor norms down further. (i)~More
 training data: $1/\sqrt{N}$ scaling predicts that $10{\times}$ the data
 should shrink distractor norms by ${\sim}\sqrt{10} \approx 3.2$, from
-${\sim}0.55$ toward ${\sim}0.17$, with driver norms essentially
-unchanged. We probe this prediction directly with the
-\texttt{geom\_largen} stage of our reproducer; the result is reported
-alongside the standard geometry numbers in
-\texttt{results\_paper/geom\_largen.json} when that stage has been
-run, and may be folded into this table in a future revision.
-(ii)~An $L_1$ penalty on the rows of $W$ (or any group/row-norm
+${\sim}0.55$ toward ${\sim}0.17$, with driver norms roughly
+unchanged. Running \texttt{linear} at $C{=}8$ with
+$N_{\text{series}}{=}5120$ (single seed; the \texttt{geom\_largen}
+stage of our reproducer, output in
+\texttt{results\_paper/geom\_largen.json}) confirms this
+qualitatively: the distractor mean norm drops to $0.218$ (a
+${\sim}2.5{\times}$ reduction, close to but slightly slower than the
+predicted ${\sim}3.2$), the driver/distractor norm ratio rises from
+$2.2{\times}$ to $6.7{\times}$, and the driver variance share rises
+from $83\%$ to $98\%$. Driver mean norm grew modestly ($1.21 \to
+1.46$) rather than staying flat, consistent with better driver
+gradient SNR pushing harder against weight decay. Best val NLL also
+improves substantially ($2.17 \to 1.85$), showing the $N{=}512$
+sweep is data-limited. Off-diagonal cosines on the single $N{=}5120$
+run are higher than the $N{=}512$ average (mean $|\cos|=0.19$ vs.\
+$0.05$); with only one seed at large $N$ we cannot separate a real
+data-regime effect from seed-level variation and we do not attribute
+it. (ii)~An $L_1$ penalty on the rows of $W$ (or any group/row-norm
 sparsity regulariser) would drive distractor norms to exact zero
 without affecting drivers materially, at the cost of an extra
 hyperparameter and a deviation from the bare \texttt{nn.Linear(C,
 $d_{\text{model}}$)} we are auditing. (iii)~Larger weight decay
 shrinks all norms, raising the driver/distractor ratio but at the
-cost of squeezing the drivers too. We do not employ any of these
-because the qualitative result---``the model down-weights
-distractors''---is already supported by the
-${\sim}2{\times}$ norm gap and the variance-share split.
+cost of squeezing the drivers too. We do not employ either of these
+in the headline because the qualitative result---``the model
+down-weights distractors and sharpens that down-weighting with more
+data''---is already supported by the norm gap, the variance-share
+split, and the $N$-scaling probe.
 
 \subsection{Channel identifiability via linear probing}
 \label{sec:results-probe}
