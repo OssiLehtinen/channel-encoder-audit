@@ -1,0 +1,24 @@
+# secrets — never commit
+ghtoken
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.uv/
+
+# latex build artefacts
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.toc
+paper/*.fls
+paper/*.fdb_latexmk
+paper/*.synctex.gz
+
+# editor
+.vscode/
+.idea/
+*.swp
+.DS_Store

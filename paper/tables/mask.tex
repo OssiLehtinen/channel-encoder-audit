@@ -1,0 +1,23 @@
+\begin{table}[t]
+\centering
+\caption{Test-time channel ablation. We zero a single channel's input at
+inference and re-evaluate val accuracy. Both block-partitioned encoders
+exhibit a clean per-channel signature concentrated on the channels that
+appear in the outcome formula (ch0 in two interaction terms, ch1 in one);
+\textsc{fdm}'s drops are sharper than \textsc{concat}'s. \textsc{sum} is much
+flatter, consistent with channel information being spread across the
+residual stream.}
+\label{tab:mask}
+\begin{tabular}{lccccc}
+\toprule
+encoder & no mask & mask ch0 & mask ch1 & mask ch2 & mask ch3 \\
+\midrule
+\textsc{fdm}    & $0.122$ & $0.076$ & $0.092$ & $0.117$ & $0.120$ \\
+$\Delta$ acc &      --- & $-0.046$ & $-0.030$ & $-0.005$ & $-0.002$ \\
+\textsc{concat} & $0.116$ & $0.084$ & $0.094$ & $0.105$ & $0.112$ \\
+$\Delta$ acc &      --- & $-0.032$ & $-0.022$ & $-0.011$ & $-0.004$ \\
+\textsc{sum}    & $0.088$ & $0.072$ & $0.079$ & $0.093$ & $0.083$ \\
+$\Delta$ acc &      --- & $-0.016$ & $-0.009$ & $+0.005$ & $-0.005$ \\
+\bottomrule
+\end{tabular}
+\end{table}

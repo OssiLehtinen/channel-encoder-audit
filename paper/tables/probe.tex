@@ -1,0 +1,27 @@
+\begin{table}[t]
+\centering
+\caption{Linear-probe channel recovery. We fit a closed-form ridge probe
+from a frozen hidden state to the raw input $x \in \mathbb{R}^4$ and report
+per-channel $R^2$ on a held-out split. Layer~0 is the input embedding;
+layer~3 is the final transformer block. Both block-partitioned encoders are
+linearly invertible at the input (\textsc{fdm} by construction, \textsc{concat}
+because each $W_k$ converges to a non-degenerate map), and recovery survives
+through three transformer layers. \textsc{sum} is fundamentally
+underdetermined and saturates at the same low ceiling at every depth.
+\textsc{fdm} preserves channel ch0 (used in two interaction terms) better
+than \textsc{concat} after attention, suggesting the carrier acts as a
+gentle inductive bias against intra-block channel mixing.}
+\label{tab:probe}
+\begin{tabular}{llccccc}
+\toprule
+Encoder & Layer & $R^2_{\text{ch0}}$ & $R^2_{\text{ch1}}$ & $R^2_{\text{ch2}}$ & $R^2_{\text{ch3}}$ & mean \\
+\midrule
+\textsc{fdm}    & 0 (input) & $1.000$ & $1.000$ & $1.000$ & $1.000$ & $\mathbf{1.000}$ \\
+\textsc{fdm}    & 3 (final) & $0.969$ & $0.963$ & $0.954$ & $0.958$ & $\mathbf{0.961}$ \\
+\textsc{concat} & 0 (input) & $0.989$ & $1.000$ & $1.000$ & $1.000$ & $0.997$ \\
+\textsc{concat} & 3 (final) & $0.813$ & $0.974$ & $0.966$ & $0.973$ & $0.932$ \\
+\textsc{sum}    & 0 (input) & $0.255$ & $0.250$ & $0.242$ & $0.214$ & $0.240$ \\
+\textsc{sum}    & 3 (final) & $0.253$ & $0.242$ & $0.239$ & $0.211$ & $0.236$ \\
+\bottomrule
+\end{tabular}
+\end{table}

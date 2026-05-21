@@ -1,0 +1,30 @@
+\begin{table}[t]
+\centering
+\caption{Scaling with channel count. Channels $0$--$3$ drive the outcome;
+all additional channels are independent distractors. Mean $\pm$ std over 3
+seeds. \textsc{concat} captures most of the gap over \textsc{sum}; the carrier
+gives an additional consistent improvement that shrinks as the per-channel
+block becomes too small to host a useful frequency ladder ($d_{\text{block}}{=}4$
+at $C{=}16$).}
+\label{tab:scaling}
+\begin{tabular}{llcccc}
+\toprule
+$C$ & $d_{\text{block}}$ & encoder & val NLL $\downarrow$ & val acc $\uparrow$ & rel.\ acc vs \textsc{sum} \\
+\midrule
+\multirow{3}{*}{4}  & \multirow{3}{*}{16}
+    & \textsc{sum}    & $3.280 \pm 0.009$ & $0.088 \pm 0.002$ & --- \\
+&   & \textsc{concat} & $3.125 \pm 0.018$ & $0.116 \pm 0.007$ & $1.32\times$ \\
+&   & \textbf{\textsc{fdm}} & $\mathbf{3.061 \pm 0.014}$ & $\mathbf{0.123 \pm 0.001}$ & $1.40\times$ \\
+\midrule
+\multirow{3}{*}{8}  & \multirow{3}{*}{8}
+    & \textsc{sum}    & $3.318 \pm 0.005$ & $0.076 \pm 0.005$ & --- \\
+&   & \textsc{concat} & $3.205 \pm 0.003$ & $0.101 \pm 0.002$ & $1.34\times$ \\
+&   & \textbf{\textsc{fdm}} & $\mathbf{3.131 \pm 0.022}$ & $\mathbf{0.112 \pm 0.002}$ & $1.48\times$ \\
+\midrule
+\multirow{3}{*}{16} & \multirow{3}{*}{4}
+    & \textsc{sum}    & $3.333 \pm 0.005$ & $0.075 \pm 0.005$ & --- \\
+&   & \textsc{concat} & $3.248 \pm 0.020$ & $0.098 \pm 0.003$ & $1.30\times$ \\
+&   & \textbf{\textsc{fdm}} & $\mathbf{3.206 \pm 0.016}$ & $\mathbf{0.103 \pm 0.005}$ & $1.38\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -1,0 +1,23 @@
+\begin{table}[t]
+\centering
+\caption{Main predictive comparison at $C{=}4$. Mean $\pm$ std over 3 seeds.
+Random baselines: $\text{NLL}{=}\ln 32 \approx 3.466$, $\text{acc}{=}0.031$.
+\textsc{concat} isolates the contribution of block partitioning; \textsc{fdm}
+adds the sinusoidal carrier. Encoder parameters in parentheses; total model
+size is $\sim$152K either way.}
+\label{tab:main}
+\begin{tabular}{lccc}
+\toprule
+Encoder & Encoder params & Val NLL $\downarrow$ & Val acc $\uparrow$ \\
+\midrule
+\textsc{sum} (baseline)         & 320 & $3.280 \pm 0.009$           & $0.088 \pm 0.002$ \\
+\textsc{concat} (block, no carrier) & 128 & $3.125 \pm 0.018$       & $0.116 \pm 0.007$ \\
+\textbf{\textsc{fdm}} (block + carrier) & 0 & $\mathbf{3.061 \pm 0.014}$ & $\mathbf{0.123 \pm 0.001}$ \\
+\midrule
+\multicolumn{2}{l}{$\Delta$NLL from \textsc{sum} $\to$ \textsc{concat}}
+                                & $-0.155$ ($71\%$ of gain)    & $+0.028$ ($80\%$ of gain) \\
+\multicolumn{2}{l}{$\Delta$NLL from \textsc{concat} $\to$ \textsc{fdm}}
+                                & $-0.064$ ($29\%$ of gain)    & $+0.007$ ($20\%$ of gain) \\
+\bottomrule
+\end{tabular}
+\end{table}

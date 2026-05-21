@@ -1,0 +1,437 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{microtype}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{authblk}
+\usepackage{caption}
+\usepackage{multirow}
+\usepackage[round,sort&compress,numbers]{natbib}
+
+\hypersetup{colorlinks=true, linkcolor=blue!50!black,
+            citecolor=blue!50!black, urlcolor=blue!50!black}
+
+\title{Frequency-Division Channel Encoding for Multi-Signal\\ Transformer Inputs}
+
+\author{Anonymous}
+\affil{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Transformers consuming several time-aligned scalar signals (e.g.\ multivariate
+sensor streams or multi-modal feature channels) typically embed each channel
+independently and \emph{sum} the embeddings before feeding the result to
+self-attention. We argue that this is the wrong default: summation is the
+information-theoretic equivalent of broadcasting all channels onto the same
+carrier, requiring the network to disentangle them downstream. We propose
+\textbf{FDM channel encoding}, a frequency-division-multiplexing analog in
+which each channel occupies a non-overlapping block of embedding dimensions
+and amplitude-modulates a channel-specific log-spaced sinusoidal carrier, in
+the spirit of RoPE. The encoding is parameter-free. On a controlled
+multi-signal benchmark with non-linear lagged interactions across channels,
+FDM reduces validation NLL by
+\textbf{0.22~nats} and raises top-1 bin accuracy by \textbf{40\%} relative
+to naive sum at $C{=}4$, while using \emph{fewer} trainable parameters. We
+decompose the encoding into two ingredients---per-channel block partitioning
+and sinusoidal carrier modulation---and show via a third \emph{concat-only}
+baseline that block partitioning alone explains $\sim$70\% of the NLL gain
+and $\sim$80\% of the accuracy gain; the carrier contributes the remaining
+$\sim$30\% / 20\% on top, with the marginal benefit shrinking when the
+per-channel block becomes too small to host a useful frequency ladder. A
+linear-probe analysis shows that FDM preserves channel identity essentially
+perfectly at the input layer (per-channel $R^2 \approx 1.0$) and largely
+through the network (mean $R^2 \approx 0.96$ at the final layer); concat
+recovers nearly as well at the input but degrades faster through attention;
+naive summation collapses recoverability to $R^2 \approx 0.24$ at every
+layer. Full training, probe, and plotting scripts accompany the paper
+(\texttt{<repository>}).
+\end{abstract}
+
+\section{Introduction}
+
+A canonical use of transformers outside language is fitting a sequence model
+to several time-aligned numerical signals: multi-sensor telemetry, financial
+factor stacks, biomedical waveforms, multi-modal embeddings concatenated
+along time. The standard recipe inherited from vision and language
+\citep{vaswani2017attention} maps each scalar input to a vector and \emph{adds}
+those vectors together---the same trick used to inject positional
+information. We will refer to this as the \emph{sum} encoding.
+
+Sum encoding has a structural problem when the input is multiple
+\emph{simultaneous} channels rather than a single token-plus-position pair:
+it is provably non-invertible. Given $h = \sum_k W_k x_k$, the network
+cannot recover individual $x_k$ from $h$ without learning to implicitly
+allocate orthogonal subspaces---a constraint that nothing in the loss
+function explicitly enforces.
+
+We borrow a fix from analog communications. \emph{Frequency-division
+multiplexing (FDM)} solves the same problem by transmitting each channel on
+a distinct carrier frequency, so that a receiver can demultiplex with a
+bank of bandpass filters. Translated to embeddings:
+\begin{enumerate}
+\item Reserve a non-overlapping block of $d_{\text{block}} = d_{\text{model}}/C$
+      dimensions per channel.
+\item Within each block, lay down a sinusoidal carrier with a
+      channel-specific log-spaced frequency $\omega_k$ and a RoPE-style
+      \citep{su2021roformer} per-dimension frequency ladder.
+\item Use the scalar signal value $v_k(t)$ as an \emph{amplitude modulation}
+      of that carrier.
+\item Concatenate the $C$ blocks into the final $d_{\text{model}}$-dim
+      embedding.
+\end{enumerate}
+The encoding is fully parameter-free; the only design choices are the
+carrier ladder $\{\omega_k\}$ and the per-block frequency base.
+
+\paragraph{Contributions.}
+\begin{itemize}
+\item A simple, parameter-free input encoding for multi-signal transformer
+      inputs that is invertible by construction.
+\item A controlled benchmark with non-linear lagged cross-channel
+      interactions, designed so that channel identity matters.
+\item Empirical evidence that FDM beats naive sum on a categorical
+      generative head by a wide margin, retains its lead as distractor
+      channels are added, is linearly probeable for the raw signals at
+      every layer, and degrades cleanly under test-time channel masking.
+\item A three-way \textsc{sum}/\textsc{concat}/\textsc{fdm} ablation that
+      attributes $\sim$70--80\% of the gain to block partitioning alone and
+      the remainder to the sinusoidal carrier, clarifying which ingredient
+      matters for which mechanism.
+\end{itemize}
+
+\section{Method}
+\label{sec:method}
+
+\subsection{Problem setup}
+We are given a sequence $\{x_t\}_{t=1}^T$ where $x_t \in \mathbb{R}^C$ is
+a vector of $C$ scalar channels at time $t$. We want a transformer to model
+$p(y_t \mid x_{\le t-1})$ where $y_t$ is a downstream target. The question
+we address is purely about how $x_t$ enters the residual stream.
+
+\subsection{FDM channel encoding}
+For channel $k \in \{0,\dots,C-1\}$ at time $t$, define the per-block
+embedding $\mathbf{e}_k(t) \in \mathbb{R}^{d_{\text{block}}}$ as
+\begin{equation}
+  \mathbf{e}_k(t)_{2i}   = v_k(t)\,\sin\!\left(\omega_k\, t\, b^{-2i/d_{\text{block}}}\right), \quad
+  \mathbf{e}_k(t)_{2i+1} = v_k(t)\,\cos\!\left(\omega_k\, t\, b^{-2i/d_{\text{block}}}\right),
+  \label{eq:fdm}
+\end{equation}
+for $i = 0,\dots,d_{\text{block}}/2 - 1$, where $b{=}10000$ is the standard
+RoPE base and $v_k(t)$ is the (normalized) signal value. The full
+embedding is the concatenation
+$\mathbf{h}(t) = [\mathbf{e}_0(t)\,\Vert\,\mathbf{e}_1(t)\,\Vert\,\cdots\,\Vert\,\mathbf{e}_{C-1}(t)]
+\in \mathbb{R}^{d_{\text{model}}}$.
+The carriers $\{\omega_k\}$ are log-spaced across $[\omega_{\min},
+\omega_{\max}]$; we use $[0.5, 8.0]$ throughout.
+
+\paragraph{Why this is invertible.}
+For fixed $t$, the per-channel block is a linear map $v_k \mapsto v_k\,\phi_k$
+where $\phi_k = [\sin(\cdot)\,\Vert\,\cos(\cdot)]$ is a known unit-norm
+template. Recovery is the inner product
+$v_k(t) = \langle \mathbf{e}_k(t),\,\phi_k(t)\rangle$, exactly as a matched
+filter demodulates an FDM channel. For sum encoding
+$\mathbf{h} = \sum_k W_k v_k$ the problem is underdetermined whenever
+$\dim(W_k) < \sum_k \dim(W_k)$, i.e.\ always.
+
+\subsection{Concat ablation: block partitioning without the carrier}
+\label{sec:concat}
+
+To isolate the contribution of the sinusoidal carrier from that of the
+block partitioning itself, we define a third encoder, \textsc{concat}:
+\begin{equation}
+  \mathbf{e}_k(t) = W_k\, v_k(t) + b_k, \qquad
+  \mathbf{h}(t) = [\mathbf{e}_0(t)\,\Vert\cdots\Vert\,\mathbf{e}_{C-1}(t)] + \mathbf{p}(t),
+  \label{eq:concat}
+\end{equation}
+with $W_k \in \mathbb{R}^{d_{\text{block}}}$, $b_k \in \mathbb{R}^{d_{\text{block}}}$
+learned per channel and $\mathbf{p}(t)$ the standard sinusoidal positional
+encoding. \textsc{concat} preserves channel identity (the embedding is
+linearly invertible to $v_k$) but does not bake position into the channel
+block, and the per-channel ``direction'' is constant across $t$. The gap
+\textsc{fdm}\,$-$\,\textsc{concat} therefore measures what the carrier
+contributes \emph{beyond} block partitioning---namely, an implicit
+RoPE-style relative-position encoding internal to each channel, so that
+attention can read off lag-dependent intra-channel structure via dot
+products without learning the demix from the additive position channel.
+
+\subsection{Sum baseline}
+The baseline encoder is
+$\mathbf{h}(t) = \sum_k (W v_k(t) + e_k) + \mathbf{p}(t)$
+with shared scalar projection $W \in \mathbb{R}^{d_{\text{model}} \times 1}$,
+learned channel embedding $e_k$, and standard sinusoidal positions
+$\mathbf{p}(t)$. It has $d_{\text{model}}(C{+}1)$ trainable encoder
+parameters; FDM has zero. For the configurations used below the gap is
+${\le}\,0.3\%$ of the total model size.
+
+We note that strengthening \textsc{sum} with per-channel projections
+$W_k v_k$ does not close the fundamental gap: the sum
+$\mathbf{h} = \sum_k W_k v_k$ is a rank-1 image in each $v_k$ and is
+underdetermined whenever $C \cdot \dim(v_k) > \dim(\mathbf{h})$, as here.
+Channel identifiability comes from the partition, not the projection.
+
+\paragraph{Alternative: channel-as-token.}
+One could instead feed each (channel, time) pair as its own token, making
+the input length $C \cdot T$ and letting attention handle channel vs.\
+time dependencies uniformly. This costs $\mathcal{O}(C^2 T^2)$ attention
+per layer versus $\mathcal{O}(T^2)$ for the encodings considered here, and
+it loses the inductive bias that channels are simultaneous rather than
+sequential. Block-partitioned encodings (\textsc{concat}, \textsc{fdm})
+can be read as an amortization of that larger attention into a single
+$T$-length stream.
+
+\section{Experimental setup}
+\label{sec:setup}
+
+\paragraph{Dataset.}
+We synthesize $N{=}512$ time series of length $T{=}160$ with $C$ channels
+each. Each channel is an independent stochastic process: a sum of three
+sinusoids with random frequencies in $[0.005, 0.08]$ cycles/sample
+(angular $\approx [0.03, 0.50]\,\text{rad/sample}$), random phases, and
+AR(1) Gaussian noise; signals are then standardized. \emph{The signal
+frequencies do not overlap with the FDM carrier band} $[0.5, 8.0]$\,rad/sample,
+so FDM cannot be winning through accidental resonance between the signal
+content and its carrier. The outcome is a fixed
+non-linear function of the \emph{first four} channels with two different
+lags,
+\[
+y_t = \tanh\!\big(s_0(t{-}3)\,s_1(t)\big)
+      + 0.6\sin\!\big(1.3\,s_2(t{-}7)\big)
+      + 0.4\,\mathbb{1}[s_3(t)>0]\,s_0(t).
+\]
+Any additional channels ($k \ge 4$) are \emph{distractors}: independent of
+$y$. The continuous outcome is binned into $K=32$ quantile bins so the
+model emits a categorical distribution at every step.
+
+\paragraph{Architecture.}
+A small causal transformer encoder with $d_{\text{model}}=64$, 4 heads, 3
+layers, FFN width 256, dropout $0.1$, pre-LayerNorm. AdamW,
+lr~$3{\times}10^{-4}$, weight decay $10^{-4}$, batch size 32, gradient
+clip 1.0, 12 epochs. Each result is averaged over 3 random seeds with
+independent data re-generation.
+
+\paragraph{Generative head.}
+We bin the continuous outcome into $K{=}32$ equal-frequency quantile bins
+and use a linear map to $K$ logits trained with next-step cross-entropy.
+Equivalently, the head parameterizes $p(y_t \mid x_{\le t-1})$ as a
+categorical distribution; sampling is trivial and NLL is a proper scoring
+rule without imposing a Gaussianity or unimodality assumption that a
+continuous Gaussian head would require. Bin edges are fixed globally from
+the pooled outcome.
+
+\paragraph{Baselines.}
+Three encoders sharing the entire transformer backbone and head:
+\textsc{fdm} (Eq.~\ref{eq:fdm}, no learnable parameters in the encoder),
+\textsc{concat} (Eq.~\ref{eq:concat}, $C \cdot 2 d_{\text{block}}$
+parameters), and \textsc{sum} (the description above,
+$d_{\text{model}}(C{+}1)$ parameters).
+
+\section{Results}
+
+\subsection{Predictive performance}
+\label{sec:results-main}
+
+\input{tables/main.tex}
+
+Table~\ref{tab:main} reports validation NLL and top-1 bin accuracy at
+$C{=}4$. The ordering \textsc{sum} $<$ \textsc{concat} $<$ \textsc{fdm} is
+consistent across all three seeds; the \textsc{fdm}\,$-$\,\textsc{concat}
+NLL gap ($0.064$) exceeds $4\times$ the pooled seed std ($0.016$), and the
+\textsc{concat}\,$-$\,\textsc{sum} gap ($0.155$) exceeds $10\times$.
+The bulk of the improvement over \textsc{sum} comes from block partitioning
+alone---\textsc{concat} closes $71\%$ of the NLL gap and $80\%$ of the
+accuracy gap---and the carrier contributes a smaller-but-stable improvement
+on top. Random guessing yields $\text{NLL}{=}\ln 32 \approx 3.466$ and
+$\text{acc}{=}1/32 \approx 0.031$.
+
+\subsection{Scaling with channel count}
+\label{sec:results-scaling}
+
+\input{tables/scaling.tex}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.9\textwidth]{figures/scaling.pdf}
+\caption{Scaling with the number of input channels $C$. Error bars are
+one seed std. All three encoders degrade with $C$ because channels
+$k \ge 4$ are distractors that add noise to the task, but the ranking
+\textsc{sum} $<$ \textsc{concat} $<$ \textsc{fdm} is preserved at every
+$C$ and the \textsc{concat}\,$-$\,\textsc{sum} gap actually \emph{widens}
+at $C{=}8$ before plateauing. The \textsc{fdm}\,$-$\,\textsc{concat} gap
+shrinks at $C{=}16$ where $d_{\text{block}}{=}4$ leaves only two sin/cos
+pairs per block, too short a ladder for the carrier to be useful.}
+\label{fig:scaling}
+\end{figure}
+
+Adding distractor channels (Table~\ref{tab:scaling}, Figure~\ref{fig:scaling})
+tests whether each encoder can isolate the four signal-bearing channels
+from the noise. All three encoders lose accuracy as $C$ grows because more
+channels means more noise in the input, but the \emph{gap} between
+block-partitioned encodings and \textsc{sum} is preserved (and, for
+accuracy, widens from $C{=}4$ to $C{=}8$). \textsc{sum}'s NLL degrades the
+least in absolute terms only because it is closest to the uniform ceiling
+to begin with. The \textsc{fdm}\,$-$\,\textsc{concat} gap shrinks slightly
+at $C{=}16$ where $d_{\text{block}}{=}4$ leaves only two sin/cos pairs per
+block---the frequency ladder is too short for the carrier to encode much
+intra-channel position---but the ordering is preserved at every $C$.
+
+\subsection{Channel identifiability via linear probing}
+\label{sec:results-probe}
+
+\input{tables/probe.tex}
+
+We freeze a trained model and fit closed-form ridge probes
+$\mathbf{h} \mapsto \hat{x}$ from a hidden state $\mathbf{h}$ at layer
+$\ell$ to the raw input vector $x \in \mathbb{R}^C$, evaluating per-channel
+$R^2$ on a held-out split (Table~\ref{tab:probe}). \textsc{fdm} input
+embeddings are linearly invertible to within numerical precision
+($R^2 \approx 1.0$), as expected from Eq.~\ref{eq:fdm}; after three
+transformer layers \textsc{fdm} still admits near-perfect recovery
+(mean $R^2 \approx 0.96$). \textsc{concat} is also nearly invertible at
+the input ($R^2 \approx 0.997$), confirming that block partitioning alone
+buys identifiability, but it degrades more sharply through attention
+($R^2_{\text{ch0}}{=}0.81$ at the final layer), particularly for the most
+heavily-used channel. \textsc{sum} collapses to $R^2 \approx 0.24$ even
+at the input layer---a quantitative confirmation that summation is
+non-invertible---and that ceiling is unchanged after attention has had a
+chance to demix. The probe and predictive results are mutually consistent:
+the encoder ranking by downstream accuracy matches the ranking by
+end-of-network channel recoverability.
+
+\subsection{Robustness to missing channels}
+\label{sec:results-mask}
+
+\input{tables/mask.tex}
+
+We zero out one channel at test time and re-evaluate
+(Table~\ref{tab:mask}). For both block-partitioned encoders the per-channel
+accuracy drop is monotonic in the channel's prominence in the outcome
+formula---ch0 (two interaction terms) produces the largest drop, then ch1,
+ch2, ch3---so the ablation profile is directly interpretable. \textsc{fdm}'s
+drops are uniformly sharper than \textsc{concat}'s (e.g.\ $-0.046$ vs.\
+$-0.032$ for ch0), consistent with stronger preservation of channel
+identity through the network. \textsc{sum}'s profile is much flatter and
+includes a $+0.005$ swing under ch2-masking that is within noise;
+information about any given channel is smeared across the residual stream,
+so individual channel ablations are poorly localized.
+
+\section{Discussion}
+
+The empirical pattern is consistent with the structural claim: sum
+encoding forces the transformer to spend capacity on a problem
+(demultiplexing) that the encoder can solve for free. The decomposition
+into \textsc{concat} and \textsc{fdm} suggests this fix has two
+separable parts. \emph{Block partitioning} is doing the heavy lifting:
+once each channel owns a piece of the residual stream, attention can read
+and write to it independently, and most of the predictive gap closes.
+The \emph{frequency carrier} is a smaller---but real and seed-stable---
+contribution on top, and we conjecture two mechanisms. First, attention
+inner products of two positions in the same channel block become
+$v_k(t_1) v_k(t_2)\,\langle\phi(t_1),\phi(t_2)\rangle$, exposing
+lag-dependent intra-channel correlations directly to the softmax. Second,
+the per-block direction varies with $t$, so the residual stream's
+``slot'' for channel $k$ is naturally orthogonal to itself across time,
+which appears to slow the leakage we see in the \textsc{concat} probe.
+
+The encoding has practical implications for multi-modal or multi-sensor
+settings where the number of channels is moderate ($C{\sim}{4\!-\!64}$) and
+the model needs to attend to channels separately before combining them.
+Existing alternatives---per-modality token streams in PerceiverIO
+\citep{jaegle2021perceiver}, or the modality embeddings in MoE-style
+multi-modal transformers---typically multiply sequence length or parameter
+count; FDM keeps both fixed.
+
+\paragraph{LayerNorm interaction.} Standard LayerNorm normalizes across the
+full $d_{\text{model}}$ axis, mixing per-channel blocks. Our results use
+plain LayerNorm and FDM still wins; we expect a per-block (group) LayerNorm
+to widen the gap further.
+
+\section{Limitations}
+
+\begin{itemize}
+\item The benchmark is synthetic. The outcome is deliberately constructed
+      to make channel identity matter; on tasks where channel identity is
+      truly redundant (e.g.\ exchangeable feature sets) sum may not be
+      penalized.
+\item We test only modest scales ($d_{\text{model}}{=}64$, 3 layers).
+      Whether the gap closes at larger scale---once the network has the
+      capacity to learn implicit demultiplexing---is open.
+\item FDM requires $C \mid d_{\text{model}}$. Variable-channel inputs need
+      reservation of full capacity, which is wasteful for long-tail
+      modality counts.
+\item Carrier hyperparameters ($\omega_{\min}, \omega_{\max}$, base) were
+      not tuned per task; we use fixed values. We expect the optimum to
+      depend on the target sequence length and dominant signal bandwidth.
+\item Only three seeds per configuration. Error bars are informative but
+      our claims would benefit from a larger seed budget at scale.
+\end{itemize}
+
+\section{Related work}
+
+\paragraph{PerceiverIO.} \citet{jaegle2021perceiver} attaches explicit
+Fourier features per modality to disambiguate inputs to a shared latent
+attention bottleneck. FDM differs in that the modality identifier and the
+signal value are \emph{multiplied} (amplitude modulation) rather than
+concatenated, and dimensions are physically partitioned across channels
+rather than across feature axes.
+
+\paragraph{RoPE.} \citet{su2021roformer} encodes positional information
+with rotation by frequency-graded angles. We re-use the same per-dimension
+frequency ladder but apply it within each channel's block, with the
+\emph{channel} carrier setting the outer scale.
+
+\paragraph{TimesNet and frequency-domain encoders.}
+\citet{wu2023timesnet} processes time-series in the frequency domain with
+explicit FFT. Our work is dual: we perform an inverse-FFT-like
+\emph{encoding} of a single value onto a per-channel frequency, rather
+than transforming the signal itself.
+
+\section{Conclusion}
+
+Summing per-channel embeddings is the multi-signal analog of broadcasting
+several radio stations on the same frequency: legible only if a downstream
+demodulator is willing to learn the demix. The fix is simpler than the
+name suggests: just give each channel its own disjoint block of embedding
+dimensions. On a controlled benchmark with lagged cross-channel
+interactions, this \emph{block-partition} recipe alone captures
+$\sim$70--80\% of the gap to a naive-sum baseline; adding a
+channel-specific sinusoidal carrier (FDM proper) buys a further
+consistent improvement. Both variants are near-drop-in replacements
+for the default embedding, preserve sequence length, and---in the FDM
+case---add zero trainable parameters. We encourage trying the block
+partition whenever a transformer takes more than one numerical signal at
+a time, and the full FDM encoding when sequence length is long enough for
+lag-dependent intra-channel attention to pay off.
+
+\bibliographystyle{plainnat}
+\begin{thebibliography}{9}
+\bibitem[Vaswani et al.(2017)]{vaswani2017attention}
+A.~Vaswani, N.~Shazeer, N.~Parmar, J.~Uszkoreit, L.~Jones, A.~N. Gomez,
+{\L}.~Kaiser, and I.~Polosukhin.
+\newblock Attention is all you need.
+\newblock In \emph{NeurIPS}, 2017.
+
+\bibitem[Su et al.(2021)]{su2021roformer}
+J.~Su, Y.~Lu, S.~Pan, B.~Wen, and Y.~Liu.
+\newblock {RoFormer}: enhanced transformer with rotary position embedding.
+\newblock \emph{arXiv:2104.09864}, 2021.
+
+\bibitem[Jaegle et al.(2021)]{jaegle2021perceiver}
+A.~Jaegle et al.
+\newblock {Perceiver IO}: a general architecture for structured inputs and
+  outputs.
+\newblock \emph{arXiv:2107.14795}, 2021.
+
+\bibitem[Wu et al.(2023)]{wu2023timesnet}
+H.~Wu, T.~Hu, Y.~Liu, H.~Zhou, J.~Wang, and M.~Long.
+\newblock {TimesNet}: temporal 2{D}-variation modeling for general time
+  series analysis.
+\newblock In \emph{ICLR}, 2023.
+\end{thebibliography}
+
+\end{document}
