@@ -34,9 +34,10 @@ carrier, requiring the network to disentangle them downstream. We propose
 \textbf{FDM channel encoding}, a frequency-division-multiplexing analog in
 which each channel occupies a non-overlapping block of embedding dimensions
 and amplitude-modulates a channel-specific log-spaced sinusoidal carrier, in
-the spirit of RoPE. The encoding is parameter-free. On a controlled
-multi-signal benchmark with non-linear lagged interactions across channels,
-FDM reduces validation NLL by
+the spirit of rotary position embedding (RoPE). The encoding is
+parameter-free. On a controlled multi-signal benchmark with non-linear lagged
+interactions across channels, FDM reduces validation negative log-likelihood
+(NLL) by
 \textbf{0.22~nats} and raises top-1 bin accuracy by \textbf{40\%} relative
 to naive sum at $C{=}4$, while using \emph{fewer} trainable parameters. We
 decompose the encoding into two ingredients---per-channel block partitioning
@@ -79,8 +80,9 @@ bank of bandpass filters. Translated to embeddings:
 \item Reserve a non-overlapping block of $d_{\text{block}} = d_{\text{model}}/C$
       dimensions per channel.
 \item Within each block, lay down a sinusoidal carrier with a
-      channel-specific log-spaced frequency $\omega_k$ and a RoPE-style
-      \citep{su2021roformer} per-dimension frequency ladder.
+      channel-specific log-spaced frequency $\omega_k$ and a
+      rotary-position-embedding (RoPE)-style \citep{su2021roformer}
+      per-dimension frequency ladder.
 \item Use the scalar signal value $v_k(t)$ as an \emph{amplitude modulation}
       of that carrier.
 \item Concatenate the $C$ blocks into the final $d_{\text{model}}$-dim
@@ -193,7 +195,8 @@ We synthesize $N{=}512$ time series of length $T{=}160$ with $C$ channels
 each. Each channel is an independent stochastic process: a sum of three
 sinusoids with random frequencies in $[0.005, 0.08]$ cycles/sample
 (angular $\approx [0.03, 0.50]\,\text{rad/sample}$), random phases, and
-AR(1) Gaussian noise; signals are then standardized. \emph{The signal
+first-order autoregressive [AR(1)] Gaussian noise; signals are then
+standardized. \emph{The signal
 frequencies do not overlap with the FDM carrier band} $[0.5, 8.0]$\,rad/sample,
 so FDM cannot be winning through accidental resonance between the signal
 content and its carrier. The outcome is a fixed
@@ -210,7 +213,7 @@ model emits a categorical distribution at every step.
 
 \paragraph{Architecture.}
 A small causal transformer encoder with $d_{\text{model}}=64$, 4 heads, 3
-layers, FFN width 256, dropout $0.1$, pre-LayerNorm. AdamW,
+layers, feed-forward network (FFN) width 256, dropout $0.1$, pre-LayerNorm. AdamW,
 lr~$3{\times}10^{-4}$, weight decay $10^{-4}$, batch size 32, gradient
 clip 1.0, 12 epochs. Each result is averaged over 3 random seeds with
 independent data re-generation.
@@ -342,8 +345,8 @@ The encoding has practical implications for multi-modal or multi-sensor
 settings where the number of channels is moderate ($C{\sim}{4\!-\!64}$) and
 the model needs to attend to channels separately before combining them.
 Existing alternatives---per-modality token streams in PerceiverIO
-\citep{jaegle2021perceiver}, or the modality embeddings in MoE-style
-multi-modal transformers---typically multiply sequence length or parameter
+\citep{jaegle2021perceiver}, or the modality embeddings in
+mixture-of-experts (MoE) style multi-modal transformers---typically multiply sequence length or parameter
 count; FDM keeps both fixed.
 
 \paragraph{LayerNorm interaction.} Standard LayerNorm normalizes across the
@@ -380,15 +383,15 @@ signal value are \emph{multiplied} (amplitude modulation) rather than
 concatenated, and dimensions are physically partitioned across channels
 rather than across feature axes.
 
-\paragraph{RoPE.} \citet{su2021roformer} encodes positional information
+\paragraph{Rotary position embedding (RoPE).} \citet{su2021roformer} encodes positional information
 with rotation by frequency-graded angles. We re-use the same per-dimension
 frequency ladder but apply it within each channel's block, with the
 \emph{channel} carrier setting the outer scale.
 
 \paragraph{TimesNet and frequency-domain encoders.}
 \citet{wu2023timesnet} processes time-series in the frequency domain with
-explicit FFT. Our work is dual: we perform an inverse-FFT-like
-\emph{encoding} of a single value onto a per-channel frequency, rather
+an explicit Fast Fourier Transform (FFT). Our work is dual: we perform an
+inverse-FFT-like \emph{encoding} of a single value onto a per-channel frequency, rather
 than transforming the signal itself.
 
 \section{Conclusion}
