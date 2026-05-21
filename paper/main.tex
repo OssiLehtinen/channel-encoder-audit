@@ -17,8 +17,8 @@
 \hypersetup{colorlinks=true, linkcolor=blue!50!black,
             citecolor=blue!50!black, urlcolor=blue!50!black}
 
-\title{Input Encoders for Multi-Channel Signal Transformers:\\
-       An Empirical Audit of Subspace Geometry}
+\title{An Empirical Audit of Input Encoders for\\
+       Multi-Channel Signal Transformers}
 
 \author{Ossi Lehtinen\thanks{\texttt{ossi@ocon.fi}}}
 \affil{Ocon Oy}
@@ -110,26 +110,26 @@ much downstream capacity fails to recover from it.
 We compare eight encoders on a controlled synthetic benchmark
 designed to make channel identity informative, with supporting
 experiments on the public ETTh1 dataset
-\citep{zhou2021informer}. Answering the open questions in order:
-(i)~the per-channel linear projection matches every alternative at
-convergence up to small, statistically real but practically modest,
-differences---the encoder landscape inside the per-channel-$W_k$
-family is one of practical near-equivalence at $20$ paired seeds;
-(ii)~the task loss alone drives the learned $W_k$ toward
-near-orthogonality and scales their norms larger for
-outcome-relevant channels, with no explicit regulariser required;
-and (iii)~a learned linear projection of the sinusoidal positional
+\citep{zhou2021informer}. Three answers map onto the three open
+questions above. First, the per-channel linear projection matches
+every alternative at convergence up to small, statistically real
+but practically modest differences---the encoder landscape inside
+the per-channel-$W_k$ family is one of practical near-equivalence
+at $20$ paired seeds. Second, the task loss alone drives the
+learned $W_k$ toward near-orthogonality and scales their norms
+with channel importance, with no explicit regulariser required.
+Third, a learned linear projection of the sinusoidal positional
 encoding gives a small but consistent gain, and a direct geometric
 probe shows the mechanism is positional--channel orthogonalisation
-rather than positional subspace compression. The
-shared-scalar \textsc{sum} baseline, included as a verified floor,
-has the capacity-independent ceiling its information-theoretic
-derivation predicts. Two narrow exceptions to (i) that we resolve
-under paired analysis but treat as practically small: \textsc{mlp}
-edges the linear family at $C{=}16$ with the gap shrinking
-${\sim}3\times$ under $10\times$ training data, and \textsc{cat}
-posts the lowest mean NLL on ETTh1 but is statistically tied with
-\textsc{linear} and \textsc{linear-ortho}.
+rather than positional subspace compression. The shared-scalar
+\textsc{sum} baseline, included as a verified floor, hits the
+capacity-independent ceiling its information-theoretic derivation
+predicts. Two narrow exceptions to the practical-near-equivalence
+verdict survive paired analysis but stay small in magnitude:
+\textsc{mlp} edges the linear family at $C{=}16$ with the gap
+shrinking ${\sim}3\times$ under $10\times$ training data, and
+\textsc{cat} posts the lowest mean NLL on ETTh1 but is
+statistically tied with \textsc{linear} and \textsc{linear-ortho}.
 
 % ======================================================================
 \section{Method}
@@ -205,27 +205,20 @@ component that varies across experiments is the input encoder
 
 \end{tikzpicture}
 \caption{Architecture. Every experiment uses the same causal
-transformer backbone (three pre-LN blocks, each structured as in the
-inset on the right: LN $\to$ self-attention $\to$ residual,
-LN $\to$ FFN $\to$ residual; followed by a final LayerNorm and a
+transformer backbone (three pre-LN blocks, each structured as in
+the inset on the right: LN $\to$ self-attention $\to$ residual, LN
+$\to$ FFN $\to$ residual; followed by a final LayerNorm and a
 linear head into $K{=}32$ bin logits). \textbf{The only component
-that varies across experiments is the encoder (blue).} Eight encoders
-share the same input/output signature
+that varies across experiments is the encoder (blue).} The eight
+encoder variants share the same input/output signature
 $\mathbb{R}^{B\times T\times C} \to \mathbb{R}^{B\times T\times
-d_{\text{model}}}$ and are therefore drop-in interchangeable. The
-variants are: \textsc{sum} (shared $W$ then sum across channels),
-\textsc{linear} (per-channel $W_k$ then sum), \textsc{linear-ortho}
-(\textsc{linear} plus an orthogonality penalty on the $W_k$),
-\textsc{mlp} (two-layer MLP on the channel vector), \textsc{linear-ppe}
-(\textsc{linear} with a learned linear projection of the positional
-encoding), \textsc{concat} (per-channel block concatenated),
-\textsc{ci} (channel-independent backbone), and \textsc{cat}
-(channel-as-token attention). Precise definitions are in
-Section~\ref{sec:method}.}
+d_{\text{model}}}$ and are drop-in interchangeable. Precise
+definitions in Section~\ref{sec:method-encoders}.}
 \label{fig:arch}
 \end{figure}
 
 \subsection{Encoders}
+\label{sec:method-encoders}
 
 We study eight encoders. In the definitions below, $v_k(t)$ is the
 scalar value of channel $k$ at time $t$, $\mathbf{p}(t)$ is a fixed
@@ -347,7 +340,7 @@ block. Data loaders use \texttt{shuffle=True} for training,
 \paragraph{Validation cadence and model selection.} Validation NLL and
 top-$1$ bin accuracy are evaluated every $20$ epochs, plus at epoch
 $1$ and epoch $300$ (giving a trace of $17$ points). We do not
-actually halt training early; instead, we report the best validation
+halt training early; instead, we report the best validation
 NLL observed along this trace, together with the accuracy at that
 same epoch (``effective early stopping''). This decouples our headline
 metric from slight differences in convergence epoch across encoders
@@ -414,7 +407,10 @@ otherwise identical.
 
 Beyond aggregate NLL, we use three diagnostics to inspect what the
 per-channel-$W_k$ encoders actually learn. Each is computed after
-full 300-epoch training, on five seeds unless stated otherwise.
+full 300-epoch training and aggregated over $20$ seeds unless
+stated otherwise (the channel-bias ablation, linear probing,
+test-time channel masking, and the \textsc{mlp} first-layer
+geometry table use $5$ seeds).
 
 \paragraph{Gram-matrix analysis.}
 \textsc{linear} and \textsc{linear-ortho} differ only in whether the
@@ -523,7 +519,7 @@ per-channel-$W_k$ family}: \textsc{linear}, \textsc{linear-ortho},
 \textsc{concat}, and \textsc{mlp} all fall in a $0.02$ NLL band at
 $2.155$--$2.177$, with \textsc{linear} and \textsc{linear-ortho} matching
 to three decimals (the orthogonality penalty contributes nothing at
-convergence). \textsc{linear-ppe} sits a touch below at $2.114$, a
+convergence). \textsc{linear-ppe} sits a small step below at $2.114$, a
 ${\sim}0.04$ NLL improvement over \textsc{linear} that is small in
 magnitude but statistically solid under the paired-seed design: $19$
 of $20$ paired differences favour \textsc{linear-ppe} (paired $t$-test
@@ -578,16 +574,16 @@ the linear family at every $C$, \textsc{mlp} edges the linear family
 absolute spread among the top four is on the order of $0.02$--$0.05$
 NLL on a baseline of $\sim$$2.2$ NLL.
 
-\paragraph{The C=16 ranking persists, but shrinks, with $10\times$
-training data.}
+\subsection{Data-richness check: $C{=}16$ at $10\times$ training data}
+\label{sec:results-largen}
+
 The $\Delta$NLL ${\sim}0.07$ between \textsc{mlp} and \textsc{linear}
 at $C{=}16, N_{\text{series}}{=}512$ raises an obvious question: is
 the nonlinear stem genuinely useful, or is the main sweep
 data-limited and \textsc{mlp} just happens to extract more from
-sparse data? We test this directly with the \texttt{main\_largen}
-stage of our reproducer: the same top-tier encoders at $C{=}16$
-trained with $N_{\text{series}}{=}5120$ ($10\times$ the main-sweep
-data), 20 seeds, otherwise identical.
+sparse data? We test this directly by retraining the same top-tier
+encoders at $C{=}16$ with $N_{\text{series}}{=}5120$ ($10\times$
+the main-sweep data), 20 seeds, otherwise identical.
 
 \begin{table}[h]
 \centering
@@ -860,12 +856,32 @@ gap, the variance split, and the $N$-scaling probe.
 
 \input{tables/probe.tex}
 
-Following the procedure in Section~\ref{sec:method-diagnostics}, all
-per-channel-$W_k$ encoders achieve $R^2 \approx 1.0$ at the encoder
-output (layer 0) and $R^2 \ge 0.84$ at the output of the third
-transformer block. \textsc{sum} collapses to $R^2 \approx 0.24$ at
-every depth---channel identity is unrecoverable from the embedding it
-produces.
+Following the procedure in Section~\ref{sec:method-diagnostics},
+Table~\ref{tab:probe} reports per-channel $R^2$ at layer~$0$ (the
+encoder output) and layer~$3$ (the output of the final transformer
+block). Three readings.
+
+First, every per-channel-$W_k$ encoder recovers the raw inputs
+near-perfectly at layer~$0$: \textsc{linear}, \textsc{linear-ortho},
+\textsc{linear-ppe}, and \textsc{mlp} all hit $R^2{=}1.000$
+across all four channels, and \textsc{concat} does the same up to
+rounding ($R^2_{\text{ch0}}{=}0.998$). The encoder is writing the
+channels into a linearly recoverable subspace by construction.
+
+Second, deep recoverability survives the full three-block stack:
+mean $R^2$ at layer~$3$ stays at $0.84$--$0.90$ for every
+per-channel-$W_k$ encoder. \textsc{mlp} loses the most on
+ch3 specifically ($0.646$) while keeping the other three above
+$0.87$; the other encoders degrade roughly uniformly. The result
+confirms the residual-stream prediction in
+Section~\ref{sec:method-diagnostics}: the linear channel directions
+the encoder writes at layer~$0$ persist through every block.
+
+Third, \textsc{sum} collapses to $R^2 \approx 0.24$ at every depth.
+This is essentially the information-theoretic floor $1/C = 0.25$
+for recovering one of four independent unit-variance channels from
+their pointwise sum---channel identity is unrecoverable from
+\textsc{sum}'s embedding, and no amount of depth fixes that.
 
 \subsection{Channel masking}
 \label{sec:results-mask}
@@ -874,13 +890,14 @@ produces.
 
 The outcome formula uses ch0 in two interaction terms, ch1 in one,
 and ch2/ch3 once each with smaller marginal effect---so we know a
-priori which channels the model \emph{should} rely on most. Zeroing
-one channel at test time gives us a behavioural test of whether the
-encoder reproduces this ordering. Table~\ref{tab:mask}: the
-top-tier encoders show sharp, interpretable per-channel accuracy
-drops that match the outcome formula. \textsc{sum} is nearly flat,
-as expected from the information-theoretic argument: it has no
-recoverable channel identity for the masking to disturb.
+priori which channels the model \emph{should} rely on most.
+Zeroing one channel at test time gives us a behavioural test of
+whether the encoder reproduces this ordering. Table~\ref{tab:mask}
+shows that the top-tier encoders produce sharp, interpretable
+per-channel accuracy drops that match the formula's importance
+ordering. \textsc{sum} is nearly flat, as expected from the
+information-theoretic argument: it has no recoverable channel
+identity for the masking to disturb.
 
 \subsection{Convergence and wall-clock cost}
 \label{sec:results-convergence}
@@ -1073,8 +1090,9 @@ preserved at both channel counts: \textsc{sum} collapses to $R^2
 \approx 0.13$ at $C{=}4$ and $\approx 0.01$ at $C{=}16$, consistent
 with the information-theoretic ceiling argument; the
 per-channel-$W_k$ tier clusters tight; \textsc{linear-ppe} edges
-\textsc{linear} at $C{=}4$ ($\sim$$6\%$ MSE reduction), and
-\textsc{mlp} edges \textsc{linear} at $C{=}16$. The
+\textsc{linear} at $C{=}4$ ($\sim$$6\%$ relative reduction in MSE,
+$0.058$ vs.\ $0.062$), and \textsc{mlp} edges \textsc{linear} at
+$C{=}16$. The
 categorical-vs.-MSE choice is therefore not what is driving the
 encoder ordering---both losses penalise \textsc{sum} for the same
 information-theoretic reason, and both reveal the same small gaps
@@ -1116,16 +1134,19 @@ Best-bin accuracies across the top tier are indistinguishable
 ($0.78$--$0.79$ with standard deviation across seeds ${\sim}0.01$).
 So \textsc{cat} posts
 the lowest mean NLL but is statistically tied with \textsc{linear}
-and \textsc{linear-ortho} at the seed-level we test. Read carefully,
-the finding is not that channel-as-token decisively wins on real
-data, but that its synthetic-benchmark disadvantage closes and a
-small directional lead emerges---one that does not survive a paired
-test against the closest competitors. A plausible reading is that
-ETTh1's seven variates are all genuinely informative measurements of
-the same physical system, so the fine-grained cross-variate attention
-\textsc{cat} enables can pay; whether that pays \emph{enough} to
-prefer it over the per-channel-$W_k$ default at matched wall-clock
-budget is much less clear.
+and \textsc{linear-ortho} at the seed level we test. Read
+carefully, the finding is not that channel-as-token decisively
+wins on real data; rather, its synthetic-benchmark disadvantage
+closes and a small directional lead emerges that does not survive
+a paired test against the closest competitors. A plausible reading is that ETTh1's seven variates are all
+plausibly informative measurements of the same underlying
+electrical system (oil temperature plus six grid-load
+variables)---unlike the synthetic benchmark, which deliberately
+mixes drivers with independent distractors---so the fine-grained
+cross-variate attention \textsc{cat} enables has more to work
+with. Whether that pays \emph{enough} to prefer it over the
+per-channel-$W_k$ default at matched wall-clock budget is much
+less clear.
 
 % ======================================================================
 \section{Discussion}
@@ -1159,20 +1180,6 @@ The bottleneck is not summation per se---\textsc{linear} also
 sums---but the \emph{shared} projection, which collapses the
 per-channel directions into one before the sum.
 
-\paragraph{Orthogonality is spontaneous.}
-\textsc{linear}'s $W_k$ reach mean off-diagonal cosine ${\approx}0.042$
-with no penalty; the regulariser tightens to ${\approx}0.010$ without
-changing NLL. The task loss provides the gradient pressure.
-
-\paragraph{Importance weighting is automatic.}
-At $C{=}8$, driver channels get ${\sim}2.3{\times}$ larger
-seed-averaged $\|W_k\|$ norms and $84\%$ of the embedding variance;
-at $C{=}16$ the norm ratio is ${\sim}2.2{\times}$ and per-channel
-variance contributions are ${\sim}4{\times}$ larger for drivers than
-for distractors. The driver/distractor gap is robust across two
-channel counts; the fine-grained ordering within drivers is
-descriptive only.
-
 \paragraph{The residual stream carries channel identity end-to-end.}
 Linear probes at layer 3 recover each channel to $R^2 \ge 0.84$,
 confirming the residual-stream prediction in
@@ -1184,123 +1191,6 @@ rescales and the additive residual keeps them in the basis. The
 geometric argument in this paper is self-consistent: the encoder
 chooses the subspace, the backbone passes it forward, and the
 deep-probe recoverability falls out of both.
-
-\paragraph{When nonlinearity helps and when it hurts.}
-\textsc{mlp} is statistically worse than \textsc{linear} at $C{=}4,
-d_{\text{model}}{=}64$ by a small margin ($\Delta = 0.022$, paired
-$p{=}2{\times}10^{-4}$, 18/20) despite its $9{\times}$ more encoder
-parameters; widening the model at $C{=}4$ makes things worse still
-($\Delta = 0.067$ at $d{=}128$, $\Delta = 0.085$ at $d{=}256$, both
-paired $p < 10^{-8}$). \textsc{mlp}'s encoder parameters scale as
-$d_{\text{model}}^2$, which exacerbates the overfitting that the
-$N{=}512$ regime already produces at $d{\ge}128$
-(Section~\ref{sec:results-dmodel}). At $C{=}16$ the picture flips:
-paired tests (Section~\ref{sec:results-scaling}) show \textsc{mlp}
-ahead of \textsc{linear} ($\Delta = 0.036$, $p{=}2{\times}10^{-4}$,
-18/20), \textsc{linear-ortho} ($\Delta = 0.036$,
-$p{=}7{\times}10^{-4}$), and \textsc{concat}
-($\Delta = 0.108$, $p{=}5{\times}10^{-12}$); against
-\textsc{linear-ppe} the gap is small and borderline
-($\Delta = 0.020$, paired $p{=}0.053$, 12/20). A plausible
-reading: with many channels (drivers plus more distractors) the
-nonlinearity buys the encoder a useful gating on the channel vector
-that a linear projection cannot match. At $10\times$ training data
-(Table~\ref{tab:main-largen}) \textsc{mlp}'s lead persists ($18$/20
-to $20$/20 paired diffs favouring \textsc{mlp}, paired
-$p \in [2{\times}10^{-13}, 4{\times}10^{-4}]$) but shrinks
-${\sim}3\times$ to $\Delta = 0.010$--$0.023$ NLL, indicating that
-the $N{=}512$ gap is partly amplified by the data-limited regime.
-The gap is small, shrinks further with more data, and the
-architecture is more complex; on this evidence we do not recommend
-\textsc{mlp} as a default choice even at the $C{=}16$ regime where
-it leads.
-
-\paragraph{Projected positional encoding: small but real across $C$.}
-The paired-seed analysis in Section~\ref{sec:results-pospro} establishes
-the \textsc{linear-ppe} gap over \textsc{linear} as small but
-statistically clear at every $C$ tested: $\Delta = 0.041$
-($p{=}2.6{\times}10^{-6}$) at $C{=}4$, $\Delta = 0.026$
-($p{=}3.7{\times}10^{-4}$) at $C{=}8$, $\Delta = 0.016$
-($p{=}0.036$) at $C{=}16$. The gap shrinks with $C$ but does not
-vanish. A direct geometric measurement
-(Table~\ref{tab:pospro-geom}) settles the mechanism: the fraction of
-the positional basis $P$'s energy that lies inside the channel
-subspace $\mathrm{span}(W)$ drops $\sim$$6.3\times$ under
-\textsc{linear-ppe} ($3.4\% \to 0.5\%$); the learned $W_{\text{pos}}$
-rotation actively pushes $P$ out of $\mathrm{span}(W)$. The
-orthogonalisation reading is confirmed; the compression reading is
-contradicted by the same measurement ($P$'s effective rank is
-\emph{higher} under \textsc{linear-ppe}, $9.55$ vs.\ $7.59$). The
-rotation is genuine, and the mechanism is geometrically principled.
-In magnitude the advantage is small (about $2\%$ of baseline NLL
-at $C{=}4$, less at larger $C$). The extra cost is
-$d_{\text{model}}^2 + d_{\text{model}}$ parameters and no
-observable wall-clock overhead, so when the residual-stream width
-is large enough that this is a small fraction of the model it is
-worth including by default; in tighter parameter budgets, skipping
-it costs ${\sim}2\%$ NLL---a real but modest amount.
-
-The $C$-dependent collapse of the gap (from $\Delta=0.054$ at $C{=}4$
-to $\Delta=0.008$ at $C{=}16$) then admits a natural reading:
-$W_{\text{pos}}$ must rotate $P$ out of a $C$-dimensional channel
-span using a fixed $d_{\text{model}}^2$ parameter budget, and the
-rotation becomes increasingly over-constrained as $C$ grows. We
-cannot fully separate this from other factors at large $C$
-(driver/distractor pressure shifting representational effort
-elsewhere; larger seed-level optimisation variance), but it is the
-mechanism-internal explanation.
-
-\paragraph{Channel-independent (\textsc{ci}).}
-\textsc{ci} runs the transformer once per channel and combines the
-per-channel hidden streams in a single head. It underperforms
-throughout. Two things contribute. (i)~The head is the structural
-bottleneck: $C$ separate streams have to be combined linearly into
-a single prediction, which loses the cross-channel interaction
-that the synthetic task is built on. (ii)~It \emph{overfits
-universally} at the main-sweep scale---all $20$ seeds at every
-$C \in \{4, 8, 16\}$ flag ``overfitting'', best val NLL is reached
-at epoch ${\sim}40$--$60$, and val NLL drifts upward by
-$0.12$--$0.29$ nats afterwards. The \textsc{ci} NLL we report is
-the effective-early-stopping minimum; without early stopping the
-encoder would look substantially worse. The wall-clock cost is
-${\sim}8\times$ \textsc{linear} at $C{=}16$. On this evidence
-\textsc{ci} is dominated by the per-channel-$W_k$ alternatives.
-
-\paragraph{Channel-as-token (\textsc{cat}).}
-\textsc{cat} is the more interesting case. It is well converged
-(all $20$ seeds at $C \in \{4, 8\}$ flag ``converged'', best epoch
-${\sim}280$--$300$, final-equals-best to four decimals), so the
-synthetic-benchmark gap to the per-channel-$W_k$ tier ($2.35$ vs.\
-$\sim$$2.15$ NLL at $C{=}4$) is a property of its converged optimum,
-not a convergence artefact. On ETTh1, where all seven variates are
-informative measurements of one physical system, that gap closes
-and \textsc{cat} posts the lowest mean NLL. Paired-difference
-tests at $20$ seeds (Section~\ref{sec:results-etth1}) place
-\textsc{cat} decisively above \textsc{mlp}
-($p{=}1.4{\times}10^{-7}$) and \textsc{linear-ppe}
-($p{=}3{\times}10^{-4}$), marginally above \textsc{concat}
-($p{=}0.002$), and \emph{statistically tied} with \textsc{linear}
-($p{=}0.14$) and \textsc{linear-ortho} ($p{=}0.10$); best-bin
-accuracies in the top tier are indistinguishable. The practical
-reading is that \textsc{cat} is competitive on ETTh1, not clearly
-best. The architecture cost is real on top of that: \textsc{cat}
-multiplies the sequence length by $C$ and the attention cost by
-$C^2$, so even at our small $C$ it runs ${\sim}5{\times}$
-\textsc{linear} at $C{=}4$ and ${\sim}17{\times}$ at $C{=}8$, and
-the operating context length the GPU has to hold grows in
-proportion. Reaching for \textsc{cat} is justified only when the
-task is known to be one where every channel is a genuine
-informative measurement of one underlying system and the
-cross-variate attention can pay---an a priori judgment about the
-data, not something this paper resolves.
-
-\paragraph{No convergence-time penalty for involved encoders.}
-\textsc{mlp}, \textsc{linear-ortho}, and \textsc{linear-ppe} reach within
-$0.05$ NLL of their final value at the same trace point as
-\textsc{linear} ($\sim$150 epochs) and cost the same per-epoch wall
-time. Within the family that uses per-channel $W_k$ on a shared
-backbone, encoder choice does not change either the convergence
-schedule or compute budget.
 
 \paragraph{Reading for non-numerical inputs.}
 The mechanism is geometric and encoding-agnostic, which suggests
@@ -1341,8 +1231,11 @@ the task at hand gives a compelling reason to do otherwise.
 
 \begin{itemize}
 \item The synthetic benchmark deliberately makes channel identity
-      informative. On tasks with exchangeable channels, \textsc{sum}
-      may not be penalised.
+      informative. On tasks with exchangeable channels the encoder
+      design problem itself changes---channel identity ceases to
+      be a useful signal---so \textsc{sum} is not penalised and
+      the per-channel-$W_k$ family's advantage over it should
+      shrink or disappear entirely.
 \item Main sweep at $d_{\text{model}}{=}64$, $C \in \{4,8,16\}$;
       ETTh1 at $d_{\text{model}}{=}56$, $C{=}7$. The $d_{\text{model}}$
       sweep covers all top-tier encoders plus \textsc{sum} at
@@ -1393,68 +1286,49 @@ for feature decorrelation. We apply the same idea to per-channel input
 projections and find it unnecessary: the task loss produces the same
 geometry.
 
+\paragraph{Linear baselines in time-series forecasting.}
+\citet{zeng2023transformers} showed that simple linear forecasters
+(\textsc{DLinear}, \textsc{NLinear}) match or beat several
+transformer architectures on standard multivariate benchmarks, an
+observation that prompted a re-examination of where transformers
+actually add value in this setting. Our work is on the orthogonal
+question of how the input layer of a transformer should embed
+multiple channels rather than whether a transformer is needed at
+all; the two lines of evidence are compatible---a linear input
+projection is also a strong default---and our \textsc{linear}
+baseline can be read as carrying that lesson inside the encoder
+even when the backbone is non-linear.
+
 % ======================================================================
 \section{Conclusion}
 % ======================================================================
 
-On tasks where channel identity is informative, a per-channel linear
-projection (\texttt{nn.Linear(C, $d_{\text{model}}$)}) matches every
-more elaborate encoder we tested up to small, statistically
-real but practically modest, differences. The task loss drives the
-channel projections to near-orthogonality, and learned norms are
-larger for outcome-relevant channels. A shared-scalar projection has
-a capacity-independent ceiling. Nonlinearity, block partitioning,
-orthogonality penalties, and channel-independent architectures all
-end up close to the linear baseline: paired-difference analysis at
-$20$ seeds resolves several small inter-encoder gaps as
-statistically clear, but the gaps span a $0.02$--$0.04$ NLL range on
-a $2.16$ NLL baseline---small enough that we would not expect them
-to translate cleanly to practically significant differences on new
-tasks with new data distributions.
+On tasks where channel identity is informative, a per-channel
+linear projection (\texttt{nn.Linear(C, $d_{\text{model}}$)})
+matches every more elaborate encoder we tested up to small,
+statistically real but practically modest, differences. The task
+loss drives the channel projections to near-orthogonality and
+scales their norms with channel importance, and a shared-scalar
+projection has a capacity-independent information-theoretic
+ceiling. The exceptions resolved under paired analysis are small
+and qualified: \textsc{linear-ppe} leads the linear family at every
+$C$ by ${\sim}2\%$ NLL via positional--channel orthogonalisation,
+\textsc{mlp} edges them at $C{=}16$ with the gap shrinking
+${\sim}3{\times}$ under $10{\times}$ training data, and
+\textsc{cat} posts the lowest mean NLL on ETTh1 but is
+statistically tied with \textsc{linear} and \textsc{linear-ortho}.
 
-Three variants deserve a footnote rather than a full carve-out, with
-caveats:
-
-\begin{itemize}
-\item \textsc{linear-ppe} consistently leads the linear family at
-  every $C$ we tested (paired $p$ from $2.6{\times}10^{-6}$ to
-  $0.036$, gap shrinking from $0.041$ to $0.016$ NLL). A direct
-  geometric probe shows the mechanism is positional--channel
-  orthogonalisation rather than positional subspace compression. The
-  rotation has a clean geometric justification and adds
-  $d_{\text{model}}^2 + d_{\text{model}}$ parameters with no
-  observable wall-clock cost.
-\item \textsc{mlp} pulls ahead of the linear family at $C{=}16$
-  under paired analysis (paired $p \in [3{\times}10^{-4},
-  5{\times}10^{-12}]$ vs.\ \textsc{linear}, \textsc{linear-ortho},
-  \textsc{concat}; gap shrinks ${\sim}3\times$ at $10\times$
-  training data but stays statistically clear). It is worse than
-  \textsc{linear} at $C{=}4$, and worse than the linear family at
-  $C{=}4$, $d_{\text{model}} \ge 128$ where it overfits hardest.
-\item \textsc{cat} posts the lowest mean NLL on ETTh1, separating
-  cleanly from \textsc{mlp} and \textsc{linear-ppe} under paired
-  tests but \emph{statistically tied} with \textsc{linear} and
-  \textsc{linear-ortho} ($p > 0.1$). It costs ${\sim}5{\times}$ wall
-  clock at $C{=}4$ and substantially more at higher $C$.
-\end{itemize}
-
-\textbf{Practical recommendation.} For simplicity, default to
-\texttt{nn.Linear(C, $d_{\text{model}}$)}. Within the
+\textbf{Practical recommendation.} Default to
+\texttt{nn.Linear(C, $d_{\text{model}}$)}: within the
 per-channel-$W_k$ family the encoder choice is, for any practical
-purpose, close to a free parameter, and adopting the simplest
-choice unless something specific in the task tips the balance is
-the path of least surprise. If the residual-stream width makes
-$d_{\text{model}}^2$ extra parameters cheap, projecting the
-sinusoidal positional encoding through a learned linear layer
-(\textsc{linear-ppe}) is a justified extra: it has a clean
-geometric mechanism, costs no wall-clock overhead, and gains a
-small but consistent $\sim$$2\%$ NLL at $C{=}4$. Reach for
-something heavier (\textsc{mlp}, \textsc{cat}) only when there is a
-real and strong reason in the task at hand---e.g.\ a high-channel
-regime where the \textsc{mlp} nonlinearity may genuinely
-gate informative channels against distractors, or a setting where
-\textsc{cat}'s ${\sim}5{\times}$ wall-clock cost and $C{\cdot}T$
-context length are justified by a known cross-variate structure.
+purpose, close to a free parameter, and the simplest option is the
+path of least surprise. \textsc{linear-ppe} is a justified
+opportunistic extra when $d_{\text{model}}^2$ parameters are cheap
+relative to the backbone. Reach for \textsc{mlp} or \textsc{cat}
+only when the task gives a real reason---a high-channel regime
+where nonlinear gating may help, or a setting whose cross-variate
+structure justifies \textsc{cat}'s ${\sim}5{\times}$ wall-clock
+cost and $C{\cdot}T$ context length.
 
 \bibliographystyle{plainnat}
 \begin{thebibliography}{9}
@@ -1499,6 +1373,11 @@ N.~Bansal, X.~Chen, and Z.~Wang.
 \newblock Can we gain more from orthogonality regularizations in training
   deep networks?
 \newblock In \emph{NeurIPS}, 2018.
+
+\bibitem[Zeng et al.(2023)]{zeng2023transformers}
+A.~Zeng, M.~Chen, L.~Zhang, and Q.~Xu.
+\newblock Are transformers effective for time series forecasting?
+\newblock In \emph{AAAI}, 2023.
 \end{thebibliography}
 
 \end{document}
