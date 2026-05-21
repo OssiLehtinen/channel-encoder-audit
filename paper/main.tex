@@ -42,10 +42,15 @@ real-data check. At convergence the standard per-channel linear projection
 we test to within seed noise on the synthetic benchmark. A variant
 that projects the sinusoidal positional encoding through a learned
 linear layer (\textsc{linear-ppe}) shows a small (${\sim}0.05$ NLL)
-advantage at $C{=}4$ on five seeds---suggestive but at the edge of
-what our sample resolves, and with the underlying mechanism
-(positional--channel orthogonalisation vs.\ positional subspace
-compression) not pinned down by the present data. On ETTh1 the
+advantage at $C{=}4$ that is robust to paired-difference analysis
+(${\sim}0.054$ mean gap, paired $t$-test $p{=}0.009$ on five seeds,
+all five paired differences positive). The gap shrinks with channel
+count---${\sim}0.037$ at $C{=}8$ and indistinguishable from zero at
+$C{=}16$. The underlying mechanism (positional--channel
+orthogonalisation vs.\ positional subspace compression) is not
+measured directly here, and the $C$-dependence is in fact
+inconsistent with the naive form of either reading, since both would
+predict the gap to grow with $C$ under fixed $d_{\text{model}}$. On ETTh1 the
 per-channel-$W_k$ family again ties at the top, but the
 channel-as-token baseline (\textsc{cat}), which underperforms on the
 synthetic task, here posts the lowest mean NLL---with overlapping
@@ -477,9 +482,10 @@ contributes nothing at convergence. The MLP stem's ${\sim}9{\times}$
 extra encoder parameters likewise provide no benefit. The only variant
 that pulls ahead is \textsc{linear-ppe}, which projects the sinusoidal
 positional encoding through a learned linear layer; its ${\sim}0.05$
-NLL gap exceeds seed std but is borderline at this sample size, and we
-return to the question of mechanism in Section~\ref{sec:results-pospro}
-and the Discussion. \textsc{ci} and \textsc{cat} underperform despite
+NLL gap is small but solid (all five paired-seed differences favour
+\textsc{linear-ppe}, paired $t$-test $p{=}0.009$). We return to the
+question of mechanism in Section~\ref{sec:results-pospro} and the
+Discussion. \textsc{ci} and \textsc{cat} underperform despite
 nominally giving each channel more capacity. The only encoder that
 loses decisively is \textsc{sum}, which lacks per-channel projections.
 
@@ -697,7 +703,7 @@ Zeroing one channel at test time (Table~\ref{tab:mask}), the top-tier
 encoders show sharp, interpretable per-channel accuracy drops that
 match the outcome formula. \textsc{sum} is nearly flat.
 
-\subsection{Positional projection: a small additional effect}
+\subsection{Positional projection: a small but robust effect at $C{=}4$}
 \label{sec:results-pospro}
 
 Of the encoders compared in Table~\ref{tab:main}, only
@@ -705,12 +711,49 @@ Of the encoders compared in Table~\ref{tab:main}, only
 Its ${\sim}0.05$ NLL improvement over \textsc{linear} is present at
 every checkpoint we record, not just at the end ($2.225$ vs.\ $2.271$
 NLL at epoch 100), so it is not a slow-burn late-training artefact.
-With only five seeds the gap exceeds either run's seed std but is at
-the edge of what our sample resolves; we discuss possible mechanisms
-(positional--channel orthogonalisation vs.\ positional subspace
-compression) in the Discussion but neither is pinned down by the
-present data. The channel encoding itself remains a single linear
-layer in either case.
+
+We use the paired-seed design (Section~\ref{sec:method-training}) to
+test the gap directly. Pairing \textsc{linear} and \textsc{linear-ppe}
+within each seed gives five per-seed differences
+$\Delta_s = \text{NLL}(\textsc{linear})_s - \text{NLL}(\textsc{linear-ppe})_s$;
+at $C{=}4$ the five values are
+$\{0.066, 0.047, 0.019, 0.051, 0.087\}$---all positive, mean
+$\Delta = 0.054$, paired $t{=}4.81$, $p{=}0.009$, $95\%$ CI on $\Delta$
+of $[0.023, 0.085]$. The gap at $C{=}4$ is small in magnitude but well
+clear of zero.
+
+The picture changes with channel count. At $C{=}8$ the mean paired
+gap is $0.037$ (four of five paired differences positive); the
+encoder--seed interaction reverses sign across seeds here---unlike
+$C{=}4$, the seed that is best for \textsc{linear} is the worst for
+\textsc{linear-ppe}---so paired pooling does not help and the
+$95\%$ CI just brackets zero ($p{=}0.06$ paired, $p{=}0.014$
+unpaired). At $C{=}16$ the gap collapses to $0.008$ ($p{=}0.65$): no
+discernible effect. The advantage is a small-$C$ phenomenon.
+
+The $C$-dependence is hard to reconcile with either naive
+mechanistic reading of \textsc{linear-ppe}. Both readings predict the
+gap should \emph{grow} with $C$ under fixed $d_{\text{model}}$:
+positional--channel orthogonalisation has more channel directions to
+deconflict from position as $C$ grows, and positional subspace
+compression frees residual-stream capacity that should matter more
+when channel pressure is higher. A measure-concentration estimate
+agrees: at fixed $d_{\text{model}}$, the expected squared cosine
+between a random unit vector and the channel span grows as
+$C / d_{\text{model}}$, so position and channels become
+\emph{more} entangled with $C$, not less. The observation that the
+gap instead vanishes therefore points to factors none of these
+geometric readings capture. Plausible candidates include:
+(a)~the synthetic task has only four drivers regardless of $C$, so
+at large $C$ the model's representational effort shifts toward
+driver/distractor separation and any positional-projection benefit
+becomes a second-order effect;
+(b)~$W_{\text{pos}}$ is over-constrained as $C$ grows---it must
+rotate position out of a higher-dimensional channel span using the
+same $d_{\text{model}}^2$ parameters; or
+(c)~optimisation noise at large $C$ is large enough to wash out the
+small absolute gain. We do not measure any of these directly. The
+channel encoding itself remains a single linear layer in either case.
 
 \subsection{Convergence and wall-clock cost}
 \label{sec:results-convergence}
@@ -862,21 +905,37 @@ for distractors. The driver/distractor gap is robust across two
 channel counts; the fine-grained ordering within drivers is
 descriptive only.
 
-\paragraph{Projected positional encoding: small effect, unsettled mechanism.}
-At $C{=}4$ on five seeds, \textsc{linear-ppe} sits ${\sim}0.05$ NLL
-below \textsc{linear}---a gap that exceeds either run's seed std but
-is borderline at this sample size, and we have not measured it at
-other channel counts in the converged regime. The mechanism is also
-not pinned down. Two readings are consistent with the data:
-(i)~projecting position into a learned subspace orients it away from
-the channel directions; or (ii)~it compresses position into fewer
-effective coordinates, freeing residual-stream capacity. Since fixed
-sinusoidal positions at $d_{\text{model}}{=}64, T{=}160$ already fill
-most directions, free $W_k$ columns can in principle place themselves
-in the lowest-energy positional directions, so (ii) is plausible. A
-direct test---principal angles between $\text{span}(W_k)$ and the
-effective positional basis, plus the effective rank of that basis
-under \textsc{linear} vs.\ \textsc{linear-ppe}---we have not run.
+\paragraph{Projected positional encoding: small, robust at $C{=}4$,
+gone by $C{=}16$.}
+The paired-seed analysis in
+Section~\ref{sec:results-pospro} establishes the $C{=}4$ gap as small
+but solid: mean $\Delta = 0.054$ NLL, paired $t$-test $p{=}0.009$,
+five out of five paired differences favouring \textsc{linear-ppe}.
+What was previously framed as ``edge of what our sample resolves''
+turns out to be an artefact of the unpaired comparison; with paired
+seeds the gap is several standard errors above zero.
+
+The $C$-dependence is the more interesting open question. At $C{=}8$
+the mean gap is $0.037$ (paired $p{=}0.06$, unpaired $p{=}0.014$);
+at $C{=}16$ it collapses to $0.008$ (no discernible effect). Both
+naive mechanistic readings of \textsc{linear-ppe}---(i)~projecting
+position into a learned subspace orients it away from the channel
+directions, or (ii)~it compresses position into fewer effective
+coordinates, freeing residual-stream capacity---would, if anything,
+predict the gap to \emph{grow} with $C$ rather than shrink: as the
+channel subspace dimension increases under fixed $d_{\text{model}}$,
+there are more directions to deconflict from position. The
+observation that the gap instead vanishes points to something not
+captured by either mechanism alone: perhaps at large $C$ the
+positional projection has too many channel constraints to satisfy
+simultaneously (the channel null space it must rotate into is only
+$d_{\text{model}} - C$ dimensional), or perhaps the encoder's
+contribution to NLL is dominated at large $C$ by failure modes that
+no positional projection can fix. A direct test---principal angles
+between $\text{span}(W_k)$ and the effective positional basis, plus
+the effective rank of that basis under \textsc{linear} vs.\
+\textsc{linear-ppe}---would discriminate these readings; we have not
+run it.
 
 \paragraph{Architectural baselines.}
 \textsc{ci} and \textsc{cat} give each channel nominally more capacity
