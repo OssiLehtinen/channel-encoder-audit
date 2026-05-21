@@ -172,7 +172,10 @@ class ConcatEncoding(nn.Module):
 
     def __init__(self, n_channels: int, d_model: int, max_len: int = 4096):
         super().__init__()
-        assert d_model % n_channels == 0, "d_model must be divisible by C"
+        if d_model % n_channels != 0:
+            raise ValueError(
+                f"ConcatEncoding requires d_model divisible by C; "
+                f"got d_model={d_model}, C={n_channels}")
         self.C = n_channels
         self.d_block = d_model // n_channels
         # one (1 -> d_block) linear per channel, packed as a single weight

@@ -82,16 +82,26 @@ ENCODERS = ["sum", "linear", "linear-ortho", "mlp", "linear-ppe",
             "concat", "ci", "cat"]
 # Encoders the linear probe applies to (single-stream hidden states).
 ENCODERS_PROBE = ["sum", "linear", "linear-ortho", "mlp", "linear-ppe", "concat"]
-# Encoders varied in the d_model sweep.
-ENCODERS_DMODEL = ["sum", "concat"]
+# Encoders varied in the d_model sweep. Matches Table 3 of the paper:
+# the linear family plus the sum baseline (ci/cat excluded — they have
+# their own width scaling story and aren't included in the d_model sweep).
+ENCODERS_DMODEL = ["sum", "concat", "linear", "linear-ortho",
+                   "mlp", "linear-ppe"]
 
 ALL_STAGES = ["main", "dmodel", "geometry", "probe", "mask", "etth1",
               "convergence", "bias", "geom_largen", "main_largen",
-              "pospro_geometry", "extra_seeds", "main_mse",
-              "mlp_geometry"]
+              "pospro_geometry", "main_mse", "mlp_geometry",
+              # ``extra_seeds`` is an open-ended round-robin and is NOT in
+              # the default --stages set; opt in explicitly with
+              # ``--stages extra_seeds`` since it loops until interrupted.
+              "extra_seeds"]
 
-EXTRA_DMODEL_ENCODERS = ["sum", "concat", "linear", "linear-ppe",
-                         "mlp", "linear-ortho"]
+# Stages that run by default. Excludes ``extra_seeds`` (infinite loop).
+DEFAULT_STAGES = [s for s in ALL_STAGES if s != "extra_seeds"]
+
+# Legacy alias retained so external callers (and old scripts) that import
+# this name still work. New code should use ``ENCODERS_DMODEL``.
+EXTRA_DMODEL_ENCODERS = ENCODERS_DMODEL
 
 
 def header(s: str) -> None:
@@ -287,7 +297,10 @@ def _train_etth1(encoder: str, seed: int, epochs: int, device: str,
     va = ETTh1Dataset("val", T=160, K=32)
     C = tr.C
     d_model = 56
-    assert d_model % C == 0
+    if d_model % C != 0:
+        raise ValueError(
+            f"ETTh1 d_model must be divisible by C; "
+            f"got d_model={d_model}, C={C}")
     n_heads, n_layers, d_ff = 7, 3, 4 * d_model
 
     train_loader = DataLoader(tr, batch_size=32, shuffle=True)
@@ -1262,8 +1275,10 @@ def main() -> None:
                         "stage (default: 5, so seeds 0..4 already "
                         "covered by the canonical runs are preserved)")
     p.add_argument("--stages", nargs="+", choices=ALL_STAGES,
-                   default=ALL_STAGES,
-                   help="which stages to run (default: all)")
+                   default=DEFAULT_STAGES,
+                   help="which stages to run (default: every stage "
+                        "except extra_seeds, which is an opt-in "
+                        "open-ended round-robin)")
     args = p.parse_args()
 
     os.makedirs(args.out, exist_ok=True)

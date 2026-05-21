@@ -34,16 +34,8 @@ class SignalTransformer(nn.Module):
     ):
         super().__init__()
         self.encoder = encoder
-        layer = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=n_heads,
-            dim_feedforward=d_ff,
-            dropout=dropout,
-            batch_first=True,
-            activation="gelu",
-            norm_first=True,
-        )
-        # Build layers manually so we can capture per-layer hidden states.
+        # Build layers manually (rather than nn.TransformerEncoder) so we
+        # can capture per-layer hidden states for the linear-probe analysis.
         self.layers = nn.ModuleList(
             [
                 nn.TransformerEncoderLayer(

@@ -224,13 +224,13 @@ COMPARISONS = [
 
     ("main", "mlp",        "linear",     {"C": 16}, "mlp vs linear at C=16"),
     ("main", "mlp",        "concat",     {"C": 16}, "mlp vs concat at C=16"),
-    ("main", "mlp",        "linear-ortho",  {"C": 16}, "mlp vs sum-ortho at C=16"),
+    ("main", "mlp",        "linear-ortho",  {"C": 16}, "mlp vs linear-ortho at C=16"),
     ("main", "mlp",        "linear-ppe", {"C": 16}, "mlp vs linear-ppe at C=16"),
 
     # ETTh1
     ("etth1", "cat", "linear",     {}, "cat vs linear on ETTh1"),
     ("etth1", "cat", "concat",     {}, "cat vs concat on ETTh1"),
-    ("etth1", "cat", "linear-ortho",  {}, "cat vs sum-ortho on ETTh1"),
+    ("etth1", "cat", "linear-ortho",  {}, "cat vs linear-ortho on ETTh1"),
     ("etth1", "cat", "mlp",        {}, "cat vs mlp on ETTh1"),
     ("etth1", "cat", "linear-ppe", {}, "cat vs linear-ppe on ETTh1"),
 
@@ -245,7 +245,7 @@ COMPARISONS = [
     # main_largen at C=16, N=5120
     ("main_largen", "mlp", "linear",     {"C": 16}, "mlp vs linear at C=16, N=5120"),
     ("main_largen", "mlp", "concat",     {"C": 16}, "mlp vs concat at C=16, N=5120"),
-    ("main_largen", "mlp", "linear-ortho",  {"C": 16}, "mlp vs sum-ortho at C=16, N=5120"),
+    ("main_largen", "mlp", "linear-ortho",  {"C": 16}, "mlp vs linear-ortho at C=16, N=5120"),
     ("main_largen", "mlp", "linear-ppe", {"C": 16}, "mlp vs linear-ppe at C=16, N=5120"),
 
     # Bias ablation (canonical 5 seeds only — not extended)

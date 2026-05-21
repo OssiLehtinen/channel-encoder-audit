@@ -40,7 +40,9 @@ def _outcome(signals: np.ndarray) -> np.ndarray:
     us study how each encoder copes with irrelevant signals as C grows.
     """
     C, T = signals.shape
-    assert C >= 4, "need >=4 driver channels"
+    if C < 4:
+        raise ValueError(
+            f"_outcome needs at least 4 driver channels, got C={C}")
     s = signals
     y = np.zeros(T, dtype=np.float32)
     L1, L2 = 3, 7

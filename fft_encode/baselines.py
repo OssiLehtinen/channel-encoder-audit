@@ -74,12 +74,12 @@ class ChannelIndependentTransformer(nn.Module):
 class ChannelAsTokenTransformer(nn.Module):
     """Each (time, channel) pair is its own token. Sequence length is C*T.
 
-    Tokens are ordered as (t=0,k=0), (t=0,k=1), ..., (t=0,k=C-1), (t=1,k=0),
-    ... so the last token at each time step has seen that whole time step's
-    channels plus all prior time steps. Causal mask enforces:
-        token i (at (t_i, k_i)) sees token j iff t_j < t_i OR (t_j == t_i and j <= i)
-    Prediction at output time t uses the hidden state of the last-channel
-    token at time t (index t*C + C-1), which has the full x_{<=t} context.
+    Tokens are ordered as (t=0, k=0), (t=0, k=1), ..., (t=0, k=C-1),
+    (t=1, k=0), ... . The mask is causal across time but
+    \\emph{bidirectional within a single time step}: a token at (t, k)
+    attends to every (t', k') with t' <= t. There is no privileged
+    intra-time-step ordering, so prediction at output time t mean-pools
+    the C tokens at time t (see ``forward``).
     """
 
     def __init__(self, n_channels: int, d_model: int, n_heads: int,
