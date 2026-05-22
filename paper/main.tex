@@ -281,9 +281,16 @@ passes through a learned linear layer:
                 + W_{\text{pos}}\,\mathbf{p}(t) + \mathbf{b}_{\text{pos}},
 \]
 with $W_{\text{pos}} \in \mathbb{R}^{d_{\text{model}} \times
-d_{\text{model}}}$. The hypothesis is that the optimiser can then rotate the positional
-subspace to a channel subspace better compatible with the signal channel encodings. Adds
-$d_{\text{model}}^2 + d_{\text{model}}$ parameters (4{,}160 at $d{=}64$).
+d_{\text{model}}}$. The sinusoidal basis is otherwise fixed at
+initialisation and cannot move; the learned $W_{\text{pos}}$ adds
+the degree of freedom needed for the positional subspace to
+relocate. The cross-stream gradient pressure already present in
+\textsc{linear} (Section~\ref{sec:results-pospro} makes it
+explicit) can then act on the positional side as well; what we
+measure is whether the optimiser uses the new freedom to rotate
+$\mathbf{p}(t)$ out of the channel subspace. Adds
+$d_{\text{model}}^2 + d_{\text{model}}$ parameters (4{,}160 at
+$d{=}64$).
 The construction is closely related to the untied positional
 embedding of \citet{ke2021rethinking}, which removes the additive
 position--content coupling at the input layer of language
@@ -1154,7 +1161,7 @@ less clear.
 \section{Discussion}
 % ======================================================================
 
-\paragraph{\textsc{linear} is not new.}
+\paragraph{\textsc{Linear} is not new.}
 Stacking per-channel projections $W_k$ and summing is
 \texttt{nn.Linear(C, $d_{\text{model}}$)}---the most obvious default.
 Our contribution is not proposing it but auditing it: at matched
@@ -1225,8 +1232,6 @@ inside the spread that typical task-design choices (channel
 count, sequence length, label binning, etc.) would induce, and we
 would not expect them to translate cleanly to practically
 significant differences on new tasks with new data distributions.
-The practical recommendation that follows from this is stated in
-the Conclusion.
 
 % ======================================================================
 \section{Limitations}
@@ -1365,10 +1370,10 @@ where nonlinear gating may help, or a setting whose cross-variate
 structure justifies \textsc{cat}'s ${\sim}5{\times}$ wall-clock
 cost and $C{\cdot}T$ context length.
 
-When we recognise, that a per channel linear projection is all that
-is needed for serving the input signals to the main model as
-orthogonally distinct entities for it to work from, we can focus
-our modelling efforts and complexity to where it matters.
+Recognising that a per channel linear projection is all that
+is needed for serving the input signals for the main model as
+orthogonally separated entities, we can focus
+our modelling efforts and model complexity to where it matters.
 
 
 \bibliographystyle{plainnat}
