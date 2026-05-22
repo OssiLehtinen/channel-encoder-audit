@@ -488,6 +488,66 @@ convergence-flag thresholds; move MLP gram analysis onto the
 encoder class). These are medium-effort and not blocking; they
 sit in TODO.md so a future-me can pick them up.
 
+## Phase 12 — Repo move and post-rename polish (May 21–22)
+
+The repository was renamed from `FDM-encoding` (a leftover from the
+original frequency-domain-multiplexing framing dropped in May 11) to
+`channel-encoder-audit`, which matches the paper's title and audit
+framing. The new repo was seeded by replaying the previous repo's
+commits via `git format-patch --root` plus `git am --ignore-date`,
+scrubbing the single token-misstep commit (the
+`ghtoken_old`-gitignore one) along the way and resetting author and
+committer dates to the move date. 42 commits made it across; the
+author email was rewritten from the placeholder to the canonical
+`ossi@ocon.fi` in the same pass.
+
+Several small follow-up edits then landed in the new repo.
+
+The in-paper URL was updated to point at the new repo. The bare
+`\url{...}` after "Code:" in the abstract was first replaced with a
+footnote (clean reading text, URL tucked away as
+`\footnote{\url{...}}`), and the URL itself changed to
+`channel-encoder-audit`.
+
+The author footnote was rendering badly: a `\thanks` + `\footnote`
+combination put the asterisk and dagger marks on top of each other
+at title-page font size, and a leading `\\` inside the footnote body
+had pushed the dagger label onto its own line. Two attempts to use
+two clean `\thanks` calls instead didn't fix the mark overlap. The
+working fix was a single `\thanks` containing both the email and
+the Claude-Code disclosure separated by a period — one marker, no
+overlap possible. Also dropped a `\texttt{}` wrapper around the
+disclosure's running prose (typewriter for a sentence of English
+text is ugly).
+
+§2.2's `linear-ppe` definition was rewritten in light of a
+clarifying question: is `linear-ppe` *enforcing* orthogonalisation
+via an architectural prior, or *enabling* a degree of freedom that
+the optimiser then uses? The latter is the correct reading, and the
+existing wording had additionally described the rotation going the
+wrong direction — "rotate the positional subspace **to** a channel
+subspace better compatible with the signal channel encodings",
+which reads like rotating `p(t)` *into* `span(W)` even though §3.10's
+measurement shows the rotation pushes `p(t)` *out of* `span(W)`.
+The new wording makes both corrections: the sinusoidal basis is
+otherwise fixed at initialisation and cannot move; `linear-ppe`'s
+only addition is the missing degree of freedom, and the cross-stream
+gradient pressure already present in vanilla `linear` (the same
+pressure that organises `W` toward near-orthogonality) does the rest
+once the position side has a parameter to move with.
+
+README and REPRODUCE.md were brought up to date with the current
+paper state. Both had been frozen at roughly the May 14 state, so
+they still claimed 5 seeds throughout, listed only 7 of the
+reproducer's now 13 finite stages, framed `ci` as "underperforming"
+rather than as a decisive loser, and described the `linear-ppe`
+mechanism as "not pinned down here". Numbers replaced with the
+20-seed values from `tab:main` / `tab:etth1`, stage table extended
+to the full 13 plus the opt-in `extra_seeds`, framing aligned with
+the current Discussion. The `dmodel` stage's encoder default — which
+the code-review pass (Phase 11) had also fixed — now says "6
+top-tier encoders" instead of the stale "sum + concat".
+
 ## Where we ended up
 
 A 21-page manuscript whose headline is: **the standard per-channel
@@ -629,3 +689,18 @@ canonical command since because we'd been doing targeted
 `--stages X` invocations the whole time. Worth re-running the
 literal command in the README/REPRODUCE.md after any change to the
 stage dispatcher, exactly the way a new user would.
+
+The §2.2 `linear-ppe` rewrite in Phase 12 is a recurrence of the
+"sticky-language" lesson from Phase 10's `ci`-as-decisive-loser
+finding. The §2.2 definition had been carrying the wrong directional
+description of the rotation since the encoder was introduced — the
+prose said `p(t)` rotates *to* a channel-compatible subspace while
+the §3.10 results section measured `p(t)` rotating *out of*
+`span(W)`. Nobody noticed for weeks: the substance was always right
+(the §3.10 measurement) and the prose-level description had drifted
+without anyone re-reading it against the result. The same kind of
+drift produced the `ci`-"underperforming" framing that Phase 10
+sharpened to "decisive loser". Recurring lesson: re-read every
+encoder *definition* against its *results* subsection at submission
+time. Substance and language drift in opposite directions when only
+one of them is being actively edited.
