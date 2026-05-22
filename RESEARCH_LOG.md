@@ -16,7 +16,7 @@ amplitude-modulates a channel-specific, RoPE-style sinusoidal carrier
 inside the block. Blocks are concatenated, so channel identity is
 preserved by construction.
 
-The initial commit (`acd442c`) shipped a complete first-pass paper around
+The initial commit (`5d125f7`) shipped a complete first-pass paper around
 this premise: four encoders (`sum`, `concat`, `fdm`, `fdm-learn`), a
 synthetic multi-signal benchmark with deliberate cross-channel
 interactions, a sweep runner, linear-probe channel-recovery and
@@ -28,15 +28,15 @@ that `fdm` (NLL 2.85) beat `sum` (3.25) and lost narrowly to `concat`
 (2.43). The hypothesis was that the *carrier* — the sinusoidal modulation
 inside each per-channel block — was buying the model something.
 
-Same-day follow-ups (`7df0143`, `5bfccc3`, `7852867`, `04489d8`) added
-authorship and expanded NLL/RoPE/FFT abbreviations on first use. `8188aa0`
+Same-day follow-ups (`06463e5`, `3545aa8`, `523e65b`, `90dddee`) added
+authorship and expanded NLL/RoPE/FFT abbreviations on first use. `3ea310e`
 added a `d_model` scaling study and a carrier-band grid search, both
 aimed at characterising FDM's behaviour.
 
 ## Phase 2 — Sharper training, broader baselines (April 14–16)
 
 The 12-epoch initial training turned out to be undertrained for `concat`;
-a 100-epoch cosine sweep (`7d89cc8`) substantially rewrote the headline
+a 100-epoch cosine sweep (`51abac8`) substantially rewrote the headline
 table. Three new baselines came in alongside:
 
 - `linear-ortho`: `sum` with a soft orthogonality regulariser on the learned
@@ -49,7 +49,7 @@ Headline at this point: `concat` and `linear-ortho` tied at NLL 2.42, both
 cleanly above `fdm` (2.85), with `sum` structurally capped at 3.25
 regardless of width. `ci` and `cat` underperformed at matched compute.
 
-ETTh1 was added as a real-data check (`f5146be`) and an off-diagonal Gram
+ETTh1 was added as a real-data check (`0b1dc44`) and an off-diagonal Gram
 analysis confirmed the learned per-channel projections were already
 near-orthogonal under `linear-ortho`.
 
@@ -66,7 +66,7 @@ question — *is the SUM-PERCH approach really novel?* — exposed that
 just `nn.Linear(C, d_model)`. It's the most obvious encoder a PyTorch
 user would write. There was no architectural novelty there.
 
-`34d2085` ("paper: full rewrite as subspace-geometry audit") reframed
+`0b9cbc6` ("paper: full rewrite as subspace-geometry audit") reframed
 the manuscript around a geometric reading: distinct input streams need
 approximately orthogonal subspaces in $d_{\text{model}}$ so the model
 can recover stream-of-origin. The shared-projection `sum` baseline is the
@@ -88,12 +88,12 @@ New encoders added during this phase:
   own embedding allow the temporal component to get orthogonal with the
   rest?" — which turned out to be experimentally true.
 
-`12eaeec` gitignored Claude Code session scratch files. `0fcf1b9`
+`2978dc6` gitignored Claude Code session scratch files. `4cee7cb`
 softened overclaims from small differences across several Results
 subsections (this is a recurring theme: tightening framing as the paired
 tests later sharpened the picture).
 
-`79fe54e` consolidated the experiments into a single
+`510d86b` consolidated the experiments into a single
 `fft_encode.reproduce` entry point with stage flags (`main`, `dmodel`,
 `geometry`, `probe`, `mask`, `etth1`, `convergence`), replacing two
 overlapping scripts (`run_all.py` and `run_300ep_all.py`). FDM was
@@ -104,7 +104,7 @@ cleanup pass — 22 stale logs, loose result JSONs, and abandoned
 
 ## Phase 4 — The overnight reproducer run and its consequences (May 12)
 
-`644da2b` was an overnight run of `fft_encode.reproduce --out
+`efb8843` was an overnight run of `fft_encode.reproduce --out
 results_paper/` at the new uniform 300-epoch budget. Everything in the
 paper from here on is derivable from the JSONs in `results_paper/`. Most
 findings reproduced within seed noise. One surprise: **`cat` posted the
@@ -116,42 +116,42 @@ clean win.
 
 Several substantive deepening commits followed in quick succession:
 
-- `ec9203c` added a Discussion paragraph on the residual stream as the
+- `4ef0ba1` added a Discussion paragraph on the residual stream as the
   reason channel identity survives downstream (probes at layer 3 recover
   $R^2 \ge 0.84$ — that's an architectural consequence, not something
   attention/FFN learns).
-- `f121adb` expanded the Methods section to give proper recipes for the
+- `baf43cf` expanded the Methods section to give proper recipes for the
   Gram, encoding-space, and linear-probing analyses, and added a §3.5
   bias ablation showing the per-channel biases on `linear` are inessential
   to the orthogonalisation argument (they collapse to a single
   $d_{\text{model}}$-dim offset). The training-protocol section grew a
   paired-seed paragraph that becomes load-bearing later.
-- `fd801b9` and `0569ec9` added a `geom_largen` stage probing the
+- `d61f07b` and `3f43bcd` added a `geom_largen` stage probing the
   distractor-norm noise-floor hypothesis: at $C=8$ with 10× training
   data, distractor norms drop from 0.55 to 0.22, confirming the
   finite-data noise-floor reading.
-- `0b075a7` sharpened the `sum` failure paragraph in the Discussion to
+- `8191b9d` sharpened the `sum` failure paragraph in the Discussion to
   deliver an explicit information-theoretic argument: the encoder output
   is a function of the pointwise sum $S(t)$ only, so by the data-
   processing inequality no downstream model can recover the lost channel
   identity. The probe's $R^2 \approx 0.24$ for `sum` at $C=4$ is exactly
   the theoretical floor of $1/C$.
-- `dd166c3` added a TikZ architecture diagram (Figure 1) showing the
+- `41e5c99` added a TikZ architecture diagram (Figure 1) showing the
   swappable encoder block in the middle of an otherwise fixed
   transformer pipeline.
-- `2dd6db6` audited the encoder parameter counts in Table 1 against the
+- `bd150cf` audited the encoder parameter counts in Table 1 against the
   actual implementations — `linear-ppe` was off by 64 (missed the
   positional-projection bias); `ci`/`cat` numbers were stale from an
   earlier code version. Numbers corrected, dagger footnote added
   explaining that "encoder params" is a slightly awkward fit for the
   architectural baselines.
-- `be3c504` was the methodological turning point on small effects:
+- `fd0a646` was the methodological turning point on small effects:
   applying paired-difference analysis to the existing per-seed JSONs
   showed the `linear-ppe` gap at $C=4$ is well above zero (paired
   $t = 4.81$, $p = 0.009$, 5/5 paired diffs positive), not "borderline"
   as the unpaired CIs suggested. Several places in the paper softened
-  during `0fcf1b9` were then resharpened with the proper test.
-- `9bb2fc8` extended paired tests to `cat` on ETTh1 (decisive vs
+  during `4cee7cb` were then resharpened with the proper test.
+- `a72d7ca` extended paired tests to `cat` on ETTh1 (decisive vs
   `mlp`/`linear-ppe`, borderline vs `linear`/`concat`/`linear-ortho`) and
   `mlp` at $C=16$ (decisive vs the whole linear family, $p \in \{0.0003,
   0.008\}$, 5/5). The same commit added an explicit policy paragraph to
@@ -161,7 +161,7 @@ Several substantive deepening commits followed in quick succession:
 
 ## Phase 5 — Stress-testing findings under more data (May 12–13)
 
-`694ed29` folded in the results of the `main_largen` 5×5 run at $C=16$,
+`03bdadb` folded in the results of the `main_largen` 5×5 run at $C=16$,
 $N_{\text{series}}=5120$ (10× the main-sweep data). Key result:
 
 - `mlp`'s lead at $C=16$ **persists** in the data-rich regime (still 5/5
@@ -176,7 +176,7 @@ The conclusion: the encoder landscape isn't completely flat (different
 encoders lead at different $C$ and dataset), but the practical gaps shrink
 substantially when the model isn't data-limited.
 
-`7a1a828` extended the `dmodel` sweep from sum+concat to all top-tier
+`74b2f2b` extended the `dmodel` sweep from sum+concat to all top-tier
 encoders at $d_{\text{model}} \in \{64, 128, 256\}$. Three findings:
 
 1. `linear-ppe` leads at *every* $d_{\text{model}}$ (14/15 paired diffs
@@ -205,7 +205,7 @@ Two candidate readings had been floating in the paper:
 - **Orthogonalisation**: it rotates positional dirs to be orthogonal to
   the channel subspace $\text{span}(W_k)$.
 
-`e473d93` added a `pospro_geometry` stage that measures both directly,
+`fb7af33` added a `pospro_geometry` stage that measures both directly,
 on five seeds each of `linear` and `linear-ppe` at $C=4$. The verdicts
 were opposite:
 
@@ -237,12 +237,7 @@ directly invokes the empirically-supported mechanism.
 
 ## Phase 7 — Cleanup (May 15)
 
-`ee03e89` un-tracked a recent-token-rotation file that was accidentally
-committed (`ghtoken_old`); a follow-up `git filter-branch` + force-push
-scrubbed it from history entirely (the token was already expired, so
-this was hygiene not security).
-
-`69b8b94` was the editorial pass: reorder the Discussion paragraphs
+`a8a0a0c` was the editorial pass: reorder the Discussion paragraphs
 into a clean grouping (why linear works → where linear isn't unique →
 practical → extrapolation), move §3.10 Pospro to sit just before
 §3.11 ETTh1 so the Results flow reads main → scalings → diagnostics →
@@ -258,7 +253,7 @@ linear-ppe) sitting at the resolution boundary of the paired test.
 Rather than dropping those findings into the noise, we added more
 seeds.
 
-`409904c` introduced an `extra_seeds` stage to the reproducer: an
+`a216aac` introduced an `extra_seeds` stage to the reproducer: an
 open-ended round-robin that, starting from a configurable seed
 (default 5, so canonical seeds 0–4 are preserved), runs one full
 cycle of the paired-test-sensitive stages and writes per-(stage, seed)
@@ -269,25 +264,25 @@ trace dicts so cluster-bootstrap (resample seeds, pool their
 per-example diffs) becomes a downstream option, not just seed-level
 bootstrap.
 
-`45a7d85` extended the round-robin to also rotate through `geometry`
+`63a2f6a` extended the round-robin to also rotate through `geometry`
 and `pospro_geometry`, so the Gram-matrix and positional-projection
 diagnostics get the same paired-seed treatment as the headline NLL
 comparisons.
 
-`a65c43c` is the analysis pipeline (`fft_encode.analyze`): merges
+`f270d30` is the analysis pipeline (`fft_encode.analyze`): merges
 canonical and extra-seed JSONs into per-stage flat lists, runs every
 paired comparison the paper makes, and reports both paired
 $t$-tests and bootstrap CIs (seed-level and cluster). The output is
 a single `analysis_<N>seeds.{json,txt}` file that drives the paper's
 $p$-values and intervals.
 
-`00ecc6f` is just the result of running the round-robin for 15
+`bc7850d` is just the result of running the round-robin for 15
 cycles (seeds 5–19), giving a 20-seed pool across every headline
 configuration. The full sweep took about a day of GPU time
 overnight; nothing else changed except more JSON files appearing
 under `results_paper/extra_seeds/`.
 
-`8cb55bd` ports the paper to the new numbers. Several effects that
+`e55ad53` ports the paper to the new numbers. Several effects that
 had been borderline at 5 seeds now resolve cleanly: linear-ppe at
 $C=8$ goes from "marginal" to $p=3.7\times 10^{-4}$, linear-ppe at
 $C=16$ goes from "null" to detectable ($p=0.036$, just above zero),
@@ -304,7 +299,7 @@ family.
 
 Two follow-up experiments emerged from the 20-seed reading.
 
-`8e96af1` flagged a real thing while looking at the convergence
+`c3313b2` flagged a real thing while looking at the convergence
 diagnostics: `ci` doesn't just underperform on synthetic — it
 *overfits universally*. All 20 seeds at every $C \in \{4, 8, 16\}$
 flag "overfitting", best val NLL is reached at epoch ${\sim}40$–60,
@@ -316,7 +311,7 @@ is sensitive to the categorical-vs.-regression head choice — could
 the bin head specifically be advantaging encoders that resolve fine
 target quantiles?
 
-`901e5d8` is the rename plus the new diagnostic. The "ortho" in
+`60749cf` is the rename plus the new diagnostic. The "ortho" in
 `sum-ortho` sat on per-channel $W_k$ rows, not on the summation
 step — calling it `sum-ortho` was a leftover from before `sum-perch`
 was renamed to `linear`. The encoder is now `linear-ortho` across
@@ -349,7 +344,7 @@ By this point the paper had accumulated the kind of redundancy
 that happens when several small additions are stacked one on top
 of another. Four editorial passes, in order:
 
-`567b2a7` is the first big restructuring. Abstract reduced to a
+`f995c00` is the first big restructuring. Abstract reduced to a
 qualitative summary (the dense paired-$p$ values were not earning
 their abstract real estate); "Open questions" reframed in the
 introduction (sum is now positioned as a verified floor, not an
@@ -360,7 +355,7 @@ question/answer pairing; ETTh1 framing hedged ("the lowest mean
 NLL but statistically tied with linear" rather than "decisively
 wins").
 
-`b1e3c9f` is the aggressive Discussion cut: seven of the Discussion
+`56e3060` is the aggressive Discussion cut: seven of the Discussion
 paragraphs essentially restated Results subsections with the same
 numbers (Orthogonality is spontaneous; Importance weighting is
 automatic; When nonlinearity helps; Projected positional encoding;
@@ -373,7 +368,7 @@ non-numerical inputs, practical-near-equivalence within the top
 tier). The Discussion shrank by ${\sim}40\%$ and the Conclusion was
 compressed in the same pass.
 
-`a7b479a` added five citations identified during the editorial
+`2c9eb9a` added five citations identified during the editorial
 re-read: Ke et al. 2021 ("Rethinking Positional Encoding") is the
 closest prior art for `linear-ppe` — they untie positional
 embeddings from content embeddings in language transformers via a
@@ -390,7 +385,7 @@ Circuits") formalises the residual-stream view that the deep-probe
 argument relies on; Alain and Bengio 2017 is the canonical
 probing-methodology reference.
 
-`68a9217` is the third editorial pass: spotted a numerical
+`9034197` is the third editorial pass: spotted a numerical
 inconsistency in the Discussion (stale 5-seed PPE $\Delta$ values
 0.054/0.008 that contradicted the 20-seed 0.041/0.016 reported in
 the Results PPE subsection), removed via the cut; §2.5's seed
@@ -404,7 +399,7 @@ carefully"; no more single-word "Three readings." sentence;
 "actually halt" demoted to "halt"; bibliography sorted
 alphabetically).
 
-`62da72b` is the bundled honesty pass spread across three reading
+`c4f4dcd` is the bundled honesty pass spread across three reading
 passes in the same evening: (i) `ci` and `cat` are
 *full-architecture alternatives*, not encoder swaps — the §2.1
 opener and the Figure 1 caption were oversold the shared-backbone
@@ -441,7 +436,7 @@ structure; author footnote acknowledges Claude Code and Opus
 By this point the paper had stabilised and we did one
 pass over the code with the same critical eye.
 
-`b0ced6b` fixed the priority-1 cluster of issues:
+`e94d4dd` fixed the priority-1 cluster of issues:
 
 - **scipy** was imported by `analyze.py:27` but not declared in
   `pyproject.toml` dependencies — a clean `uv sync` followed by
@@ -475,7 +470,7 @@ pass over the code with the same critical eye.
   switch to a manual `ModuleList` (which is what lets the probe
   capture per-layer hidden states).
 
-`05c5c5f` added `TODO.md` capturing the deferred items: refactors
+`85ebb57` added `TODO.md` capturing the deferred items: refactors
 (consolidate the two ETTh1 training paths;
 factor `stage_extra_seeds` so each stage exposes a one-seed entry
 point; merge `train_and_trace_mse` into `train_and_trace` via a
@@ -662,13 +657,13 @@ Discussion sections tend to grow by accumulation — each new
 sub-experiment adds a Discussion paragraph that interprets it, and
 those paragraphs accumulate without anyone noticing they're
 restating the corresponding Results subsection with the same
-numbers. The aggressive cut in `b1e3c9f` dropped seven such
+numbers. The aggressive cut in `56e3060` dropped seven such
 paragraphs and the Discussion got *better* for it. Worth doing
 proactively on future papers rather than waiting for someone to
 notice.
 
 The "ci as second decisive loser" item in Phase 10's bundle
-(`62da72b`) is the kind of thing that's only obvious in retrospect.
+(`c4f4dcd`) is the kind of thing that's only obvious in retrospect.
 We'd been calling `ci` "underperforming" for weeks because that's
 what the original framing said, and nobody re-checked the gap
 against the top tier until a fresh reading. At $C=4$ `ci` is at
