@@ -578,8 +578,8 @@ information-theoretic floor than to the linear baseline. So two
 encoders lose decisively on the synthetic benchmark:
 \textsc{sum}, for the algebraic reasons discussed in the
 Discussion, and \textsc{ci}, whose head-side bottleneck and
-universal overfitting we unpack alongside the other architectural
-baseline in the Discussion.
+universal overfitting (every seed flags as overfitting) place
+it close to the \textsc{sum} floor on this benchmark.
 
 \subsection{Channel-count scaling}
 \label{sec:results-scaling}
@@ -836,7 +836,7 @@ $C{=}16$ & $1.30$ & $0.59$ & $62.4\%$ & $37.6\%$ \\
 Driver channels receive ${\sim}2.2{\times}$ larger seed-averaged norms
 than distractors at $C{=}8$ and ${\sim}2.1{\times}$ at $C{=}16$. The
 four drivers capture $83\%$ of the embedding variance at $C{=}8$ and
-$61\%$ at $C{=}16$, where the aggregate share is naturally diluted by
+$62\%$ at $C{=}16$, where the aggregate share is naturally diluted by
 having twelve distractors but the per-channel variance contribution
 remains markedly larger for drivers ($\sim$$15\%$ each vs.\
 $\sim$$3\%$ each). We do not report per-channel error bars on the
@@ -1165,11 +1165,15 @@ less clear.
 Stacking per-channel projections $W_k$ and summing is
 \texttt{nn.Linear(C, $d_{\text{model}}$)}---the most obvious default.
 Our contribution is not proposing it but auditing it: at matched
-parameter budget, it matches every alternative
-(block-partitioned, orthogonality-regularised, nonlinear,
-channel-independent, channel-as-token) on the synthetic benchmark,
-and ties at the top of the per-channel-$W_k$ tier on ETTh1. Only the
-shared-projection \textsc{sum} consistently loses.
+parameter budget, no variant we test substantially dislodges it.
+On the synthetic benchmark, \textsc{concat} and \textsc{linear-ortho}
+tie it within seed noise, \textsc{linear-ppe} edges it by
+${\sim}2\%$ NLL at every $C$ (Section~\ref{sec:results-scaling}),
+\textsc{mlp} matches it at $C{=}4$ and edges it narrowly at $C{=}16$,
+and the architectural alternatives \textsc{ci} and \textsc{cat}
+underperform decisively. On ETTh1 it ties at the top of the
+per-channel-$W_k$ tier. Only the shared-projection \textsc{sum}
+consistently loses outright.
 
 \paragraph{What fails about the shared-scalar baseline.}
 \textsc{sum} collapses because, with a shared scalar projection $W$
@@ -1226,7 +1230,7 @@ per-channel-$W_k$ family (\textsc{linear}, \textsc{linear-ortho},
 absolute NLL differences span $0.02$ on a baseline of $2.16$;
 \textsc{linear-ppe}'s lead over \textsc{linear} is $0.041$ NLL
 ($\sim$$2\%$ of baseline); \textsc{mlp}'s lead over the linear
-family at $C{=}16$ is $0.011$--$0.025$ in the data-rich regime.
+family at $C{=}16$ is $0.010$--$0.023$ in the data-rich regime.
 These are real gaps under our experimental design, but they sit
 inside the spread that typical task-design choices (channel
 count, sequence length, label binning, etc.) would induce, and we

@@ -77,7 +77,7 @@ positional encoding:
 |----------------|-----------|
 | `sum`          | shared scalar projection $W$, per-channel bias: $h(t) = \sum_k (W v_k(t) + e_k) + \mathbf{p}(t)$ |
 | `linear`       | per-channel projection $W_k$, summed: $h(t) = \sum_k (W_k v_k(t) + b_k) + \mathbf{p}(t)$ — i.e. `nn.Linear(C, d_model)` |
-| `linear-ortho` | `linear` plus auxiliary loss $\lambda \sum_{i \ne j}(W_i \cdot W_j)^2$ ($\lambda=10^{-2}$) |
+| `linear-ortho` | `linear` plus auxiliary loss $\lambda \sum_{i < j}(W_i \cdot W_j)^2$ ($\lambda=10^{-2}$) |
 | `mlp`          | two-layer MLP on the channel vector with GELU nonlinearity |
 | `linear-ppe`   | `linear` channel side plus a learned linear projection of $\mathbf{p}(t)$ |
 | `concat`       | per-channel projection into $d_{\text{model}}/C$ dims, concatenated (block partitioning) |

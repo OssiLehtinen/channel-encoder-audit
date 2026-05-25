@@ -625,7 +625,7 @@ _EXTRA_STAGES = ["main", "etth1", "main_largen", "dmodel", "geom_largen",
 
 
 def _extra_done(out_dir: str, s: int) -> bool:
-    """All five stage outputs for seed s already on disk."""
+    """All stage outputs for seed s already on disk."""
     return all(
         os.path.exists(os.path.join(out_dir, f"{stage}_s{s:03d}.json"))
         for stage in _EXTRA_STAGES
@@ -634,16 +634,16 @@ def _extra_done(out_dir: str, s: int) -> bool:
 
 def stage_extra_seeds(args, device) -> None:
     """Open-ended round-robin: outer loop is seed (starting from
-    --extra-seeds-start), inner loops are the five paired-test-
-    sensitive stages. Loops forever until interrupted. After each
-    completed seed cycle, every covered stage has one more seed of
-    data on disk. Killing the process at any point leaves a balanced
-    set of extra runs (or, mid-cycle, only up to whichever stages
-    have already written their per-seed JSON).
+    --extra-seeds-start), inner loops are the paired-test-sensitive
+    stages listed in ``_EXTRA_STAGES``. Loops forever until
+    interrupted. After each completed seed cycle, every covered stage
+    has one more seed of data on disk. Killing the process at any
+    point leaves a balanced set of extra runs (or, mid-cycle, only up
+    to whichever stages have already written their per-seed JSON).
 
     Writes per-(stage, seed) files to <out>/extra_seeds/ so the
     canonical <out>/{main,etth1,...}.json files are never touched.
-    Seeds whose five output files already exist are skipped, so
+    Seeds whose stage outputs already exist are skipped, so
     re-launching the stage resumes where it left off."""
     import itertools
     out_dir = os.path.join(args.out, "extra_seeds")
