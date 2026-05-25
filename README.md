@@ -6,9 +6,7 @@ Ossi Lehtinen, Ocon Oy — <ossi@ocon.fi>
 > simplest thing that works and we never decisively beat it. For a
 > small but consistent ${\sim}2\%$ NLL gain, use `linear-ppe` (the
 > same per-channel projection plus a learned linear projection of
-> the sinusoidal positional encoding). Avoid `sum` (shared-scalar
-> projection — collapses channels) and `ci` (channel-independent
-> stem — overfits) on tasks where channel identity carries signal.
+> the sinusoidal positional encoding).
 
 An empirical audit of how transformers should embed $C$ simultaneous scalar
 channels at the input layer. Eight encoders compared on a controlled
