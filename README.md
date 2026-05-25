@@ -2,23 +2,33 @@
 
 Ossi Lehtinen, Ocon Oy — <ossi@ocon.fi>
 
+> **Recommendation.** Default to `nn.Linear(C, d_model)` — it's the
+> simplest thing that works and we never decisively beat it. For a
+> small but consistent ${\sim}2\%$ NLL gain, use `linear-ppe` (the
+> same per-channel projection plus a learned linear projection of
+> the sinusoidal positional encoding). Avoid `sum` (shared-scalar
+> projection — collapses channels) and `ci` (channel-independent
+> stem — overfits) on tasks where channel identity carries signal.
+
 An empirical audit of how transformers should embed $C$ simultaneous scalar
 channels at the input layer. Eight encoders compared on a controlled
 synthetic benchmark and on the public ETTh1 dataset, with paired-difference
 analysis at 20 seeds for headline configurations.
 
 The headline result is that **the standard per-channel linear projection
-`nn.Linear(C, d_model)`** matches every alternative we test (block
-partitioning, orthogonality regularisers, nonlinear MLP stems,
-channel-independent and channel-as-token architectures) up to small,
-statistically real but practically modest, differences. Two encoders
-lose decisively: the shared-scalar baseline `sum` (information-theoretic
-collapse) and the channel-independent baseline `ci` (overfits universally
-on the synthetic benchmark, underperforms on both). Within the top tier,
-**`linear-ppe`** — projecting the sinusoidal positional encoding through a
-learned linear layer — gives a small but consistent edge at every $C$
-tested, with a direct geometric probe identifying the mechanism as
-positional-channel orthogonalisation (not subspace compression).
+`nn.Linear(C, d_model)`** is hard to dislodge. Block partitioning
+(`concat`) and orthogonality regularisation (`linear-ortho`) tie it
+within seed noise; a nonlinear MLP stem matches it at low $C$ and edges
+it narrowly at $C{=}16$; and **`linear-ppe`** — projecting the
+sinusoidal positional encoding through a learned linear layer — gives
+a small but consistent ${\sim}2\%$ NLL edge at every $C$ tested. The
+shared-scalar baseline `sum` (information-theoretic collapse) and the
+channel-independent baseline `ci` (overfits universally on the synthetic
+benchmark, underperforms on both) lose decisively; the channel-as-token
+baseline `cat` sits behind the per-channel-$W_k$ tier on the synthetic
+benchmark but ties it on ETTh1. A direct geometric probe identifies
+`linear-ppe`'s mechanism as positional-channel orthogonalisation (not
+subspace compression).
 
 ---
 
@@ -89,6 +99,27 @@ $\mathbb{R}^{B\times T\times C} \to \mathbb{R}^{B\times T\times d_{\text{model}}
 and feed into the same causal transformer backbone. `ci` and `cat` are
 full-architecture alternatives that reshape the token sequence the
 backbone consumes.
+
+---
+
+## Synthetic benchmark
+
+Each series has $C$ channels, each an independent sum-of-three-sinusoids
+with frequencies in $[0.005, 0.08]$ cycles/sample plus AR(1) noise,
+standardised. The outcome depends on the first four channels:
+
+$$
+y_t = \tanh(s_0(t{-}3)\, s_1(t)) + 0.6\sin(1.3\, s_2(t{-}7))
+      + 0.4\,\mathbb{1}[s_3(t) > 0]\, s_0(t),
+$$
+
+binned into $K=32$ quantile bins. Channels $k \ge 4$ are independent
+distractors. The benchmark is deliberately designed so that an encoder that
+mixes channels at the input layer cannot recover the interaction structure.
+
+ETTh1 (`fft_encode/real_data.py`) is fetched from the ETDataset GitHub
+mirror on first use and cached under `$FFT_ENCODE_CACHE` (default
+`~/.cache/fft_encode/`).
 
 ---
 
@@ -183,27 +214,6 @@ pdflatex main.tex && pdflatex main.tex
 
 Build dependencies: any TeX Live with `booktabs`, `multirow`, `natbib`,
 `authblk`, `microtype`.
-
----
-
-## Synthetic benchmark
-
-Each series has $C$ channels, each an independent sum-of-three-sinusoids
-with frequencies in $[0.005, 0.08]$ cycles/sample plus AR(1) noise,
-standardised. The outcome depends on the first four channels:
-
-$$
-y_t = \tanh(s_0(t{-}3)\, s_1(t)) + 0.6\sin(1.3\, s_2(t{-}7))
-      + 0.4\,\mathbb{1}[s_3(t) > 0]\, s_0(t),
-$$
-
-binned into $K=32$ quantile bins. Channels $k \ge 4$ are independent
-distractors. The benchmark is deliberately designed so that an encoder that
-mixes channels at the input layer cannot recover the interaction structure.
-
-ETTh1 (`fft_encode/real_data.py`) is fetched from the ETDataset GitHub
-mirror on first use and cached under `$FFT_ENCODE_CACHE` (default
-`~/.cache/fft_encode/`).
 
 ---
 
