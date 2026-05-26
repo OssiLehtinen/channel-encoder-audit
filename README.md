@@ -3,10 +3,11 @@
 Ossi Lehtinen, Ocon Oy — <ossi@ocon.fi>
 
 > **Recommendation.** Default to `nn.Linear(C, d_model)` — it's the
-> simplest thing that works and we never decisively beat it. For a
-> small but consistent ${\sim}2\%$ NLL gain, use `linear-ppe` (the
-> same per-channel projection plus a learned linear projection of
-> the sinusoidal positional encoding).
+> simplest thing that works and we never decisively beat it, because
+> the per-channel projections spontaneously orthogonalise when the
+> task requires it. For a small but consistent ${\sim}2\%$ NLL gain,
+> use `linear-ppe` (the same per-channel projection plus a learned
+> linear projection of the sinusoidal positional encoding).
 
 An empirical audit of how transformers should embed $C$ simultaneous scalar
 channels at the input layer. Eight encoders compared on a controlled
