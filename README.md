@@ -208,7 +208,7 @@ writes `paper/figures/scaling.pdf` and `paper/figures/dmodel_scaling.pdf`.
 
 ```bash
 cd paper
-pdflatex main.tex && pdflatex main.tex
+pdflatex lehtinen2026_channel_encoders.tex && pdflatex lehtinen2026_channel_encoders.tex
 ```
 
 Build dependencies: any TeX Live with `booktabs`, `multirow`, `natbib`,
@@ -246,7 +246,7 @@ paper-facing encoder names.
 
 ## Citation
 
-If you use this work, please cite the manuscript at `paper/main.pdf`.
+If you use this work, please cite the manuscript at `paper/lehtinen2026_channel_encoders.pdf`.
 
 ## License
 

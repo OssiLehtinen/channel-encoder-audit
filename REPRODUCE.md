@@ -100,7 +100,7 @@ writes `paper/figures/scaling.pdf` and `paper/figures/dmodel_scaling.pdf`.
 ## Building the paper
 
 ```bash
-cd paper && pdflatex main.tex && pdflatex main.tex
+cd paper && pdflatex lehtinen2026_channel_encoders.tex && pdflatex lehtinen2026_channel_encoders.tex
 ```
 
 Build dependencies: any TeX Live with `booktabs`, `multirow`, `natbib`,
