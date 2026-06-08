@@ -28,10 +28,10 @@ underperforms on both) lose decisively; the channel-as-token baseline
 `cat` sits behind the per-channel-$W_k$ tier on the synthetic benchmark
 but ties it on ETTh1. A direct geometric probe attributes the headline
 tie to **spontaneous orthogonalisation**: the per-channel projections
-end up near-orthogonal under training with no explicit regulariser
-needed, which lets the standard linear recover channel identity from
-the summed embedding. `linear-ppe`'s edge comes from extending this
-orthogonality to the positional subspace.
+end up near-orthogonal with no explicit regulariser, letting the
+standard linear recover channel identity from the summed embedding.
+`linear-ppe`'s edge comes from extending this orthogonality to the
+positional subspace.
 
 ---
 
