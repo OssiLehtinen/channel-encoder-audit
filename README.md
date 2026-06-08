@@ -246,7 +246,7 @@ paper-facing encoder names.
 
 ## Citation
 
-If you use this work, please cite the manuscript at `paper/lehtinen2026_channel_encoders.pdf`.
+If you use this work, please cite the manuscript: <https://arxiv.org/abs/2606.04752>.
 
 ## License
 
