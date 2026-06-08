@@ -18,16 +18,20 @@ The headline result is that **the standard per-channel linear projection
 `nn.Linear(C, d_model)`** is hard to dislodge. Block partitioning
 (`concat`) and orthogonality regularisation (`linear-ortho`) tie it
 within seed noise; a nonlinear MLP stem matches it at low $C$ and edges
-it narrowly at $C{=}16$; and **`linear-ppe`** — projecting the
-sinusoidal positional encoding through a learned linear layer — gives
-a small but consistent ${\sim}2\%$ NLL edge at every $C$ tested. The
-shared-scalar baseline `sum` (information-theoretic collapse) and the
-channel-independent baseline `ci` (overfits universally on the synthetic
-benchmark, underperforms on both) lose decisively; the channel-as-token
-baseline `cat` sits behind the per-channel-$W_k$ tier on the synthetic
-benchmark but ties it on ETTh1. A direct geometric probe identifies
-`linear-ppe`'s mechanism as positional-channel orthogonalisation (not
-subspace compression).
+it narrowly at $C{=}16$, with the gap shrinking under more training
+data; and **`linear-ppe`** — projecting the sinusoidal positional
+encoding through a learned linear layer — gives a small but consistent
+${\sim}2\%$ NLL edge at every $C$ tested. The shared-scalar baseline
+`sum` (information-theoretic collapse) and the channel-independent
+baseline `ci` (overfits universally on the synthetic benchmark,
+underperforms on both) lose decisively; the channel-as-token baseline
+`cat` sits behind the per-channel-$W_k$ tier on the synthetic benchmark
+but ties it on ETTh1. A direct geometric probe attributes the headline
+tie to **spontaneous orthogonalisation**: the per-channel projections
+end up near-orthogonal under training with no explicit regulariser
+needed, which lets the standard linear recover channel identity from
+the summed embedding. `linear-ppe`'s edge comes from extending this
+orthogonality to the positional subspace.
 
 ---
 
