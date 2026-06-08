@@ -45,21 +45,26 @@ benchmark designed to make channel identity informative and on
 ETTh1 as a real-data check, measured in
 next-step negative log-likelihood (NLL). The headline is one of
 practical near-equivalence within a wide ``top tier'': the
-standard per-channel linear projection
-(\texttt{nn.Linear(C, $d_{\text{model}}$)}) matches every
+standard per-channel linear projection matches every
 alternative in that tier up to small, statistically real but
-practically modest, differences. Two encoders lose decisively: the
+practically modest, differences. A direct geometric probe
+attributes this to a \emph{spontaneous orthogonalisation} of
+the per-channel projections under training---when the task
+makes channel identity informative they end up
+near-orthogonal with no explicit regulariser needed---which
+lets the standard linear recover channel identity from the
+summed input embedding. Two encoders lose decisively: the
 shared-scalar baseline, which collapses for information-theoretic
 reasons we make explicit, and the channel-independent
 PatchTST-spirit baseline, which underperforms on both benchmarks
 and overfits universally on the synthetic one. Paired tests resolve two small gaps:
 projecting the sinusoidal positional encoding through a learned
-linear layer edges the rest at small $C$, with a direct geometric
-probe showing the mechanism is positional--channel
-orthogonalisation; a nonlinear MLP stem edges them at the largest
+linear layer edges the rest at small $C$ by extending this
+orthogonality to the positional subspace; a nonlinear MLP stem
+edges them at the largest
 $C$ we test, with the gap shrinking under more training data. The
-practical recommendation is to use
-\texttt{nn.Linear(C, $d_{\text{model}}$)} by default and reach for
+practical recommendation is to use the standard per-channel
+linear projection by default and reach for
 something more elaborate only when the task at hand gives a real
 reason to do so. Code and data to reproduce every experiment in this
 paper are available on GitHub.\footnote{\url{https://github.com/OssiLehtinen/channel-encoder-audit}}
